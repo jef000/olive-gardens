@@ -19,8 +19,6 @@ const BookingPage = () => {
   const [selectedDate, setSelectedDate] = useState(prefilledDate);
   const [formData, setFormData] = useState({
     name: "",
-  const [formData, setFormData] = useState({
-    name: "",
     email: "",
     phone: "",
     headcount: "",
