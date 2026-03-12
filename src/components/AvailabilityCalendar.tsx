@@ -7,6 +7,7 @@ import { format } from "date-fns";
 import { CalendarIcon, Users, Info } from "lucide-react";
 
 export function AvailabilityCalendar() {
+  const navigate = useNavigate();
   const [selectedSpaceId, setSelectedSpaceId] = useState(venueSpaces[0].id);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
 
