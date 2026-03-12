@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 const spaces = [
   { id: "main-arena", name: "Main Arena", capacity: 500 },
@@ -8,9 +8,15 @@ const spaces = [
 ];
 
 const BookingPage = () => {
-  const [step, setStep] = useState(1);
-  const [selectedSpace, setSelectedSpace] = useState("");
-  const [selectedDate, setSelectedDate] = useState("");
+  const [searchParams] = useSearchParams();
+  const prefilledSpace = searchParams.get("space") || "";
+  const prefilledDate = searchParams.get("date") || "";
+
+  const hasPreselection = prefilledSpace && prefilledDate && spaces.some(s => s.id === prefilledSpace);
+
+  const [step, setStep] = useState(hasPreselection ? 2 : 1);
+  const [selectedSpace, setSelectedSpace] = useState(hasPreselection ? prefilledSpace : "");
+  const [selectedDate, setSelectedDate] = useState(prefilledDate);
   const [formData, setFormData] = useState({
     name: "",
     email: "",

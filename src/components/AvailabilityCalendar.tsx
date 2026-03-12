@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { venueSpaces, getBookingsForSpace, getBookingForDate, type BookedSlot } from "@/data/mockAvailability";
@@ -6,6 +7,7 @@ import { format } from "date-fns";
 import { CalendarIcon, Users, Info } from "lucide-react";
 
 export function AvailabilityCalendar() {
+  const navigate = useNavigate();
   const [selectedSpaceId, setSelectedSpaceId] = useState(venueSpaces[0].id);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
 
@@ -153,9 +155,12 @@ export function AvailabilityCalendar() {
                   <p className="font-body text-sm text-muted-foreground">
                     This date is open for booking at {selectedSpace.name}.
                   </p>
-                  <a href="/book" className="cta-primary inline-block text-center">
+                  <button
+                    onClick={() => navigate(`/book?space=${selectedSpaceId}&date=${selectedDateStr}`)}
+                    className="cta-primary inline-block text-center"
+                  >
                     Book This Date
-                  </a>
+                  </button>
                 </div>
               )}
             </div>
