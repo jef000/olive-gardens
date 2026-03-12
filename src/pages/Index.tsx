@@ -54,7 +54,7 @@ const Index = () => {
             Nestled in the highlands of Meru, Olive Retreat Gardens offers grounds of extraordinary beauty for weddings, retreats, counselling, and community events.
           </p>
           <div className="flex flex-wrap gap-4 animate-fade-in" style={{ animationDelay: "0.5s" }}>
-            <Link to="/book" className="cta-primary">
+            <Link to="/availability" className="cta-primary">
               Check Availability
             </Link>
             <Link to="/services" className="cta-outline border-primary-foreground/40 text-primary-foreground hover:bg-primary-foreground/10">
