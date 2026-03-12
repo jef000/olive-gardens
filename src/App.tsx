@@ -10,6 +10,7 @@ import Services from "./pages/Services.tsx";
 import Gallery from "./pages/Gallery.tsx";
 import Contact from "./pages/Contact.tsx";
 import BookingPage from "./pages/BookingPage.tsx";
+import AvailabilityPage from "./pages/AvailabilityPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
