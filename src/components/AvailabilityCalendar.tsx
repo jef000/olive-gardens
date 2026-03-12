@@ -155,9 +155,12 @@ export function AvailabilityCalendar() {
                   <p className="font-body text-sm text-muted-foreground">
                     This date is open for booking at {selectedSpace.name}.
                   </p>
-                  <a href="/book" className="cta-primary inline-block text-center">
+                  <button
+                    onClick={() => navigate(`/book?space=${selectedSpaceId}&date=${selectedDateStr}`)}
+                    className="cta-primary inline-block text-center"
+                  >
                     Book This Date
-                  </a>
+                  </button>
                 </div>
               )}
             </div>
