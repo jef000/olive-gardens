@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { venueSpaces, getBookingsForSpace, getBookingForDate, type BookedSlot } from "@/data/mockAvailability";
