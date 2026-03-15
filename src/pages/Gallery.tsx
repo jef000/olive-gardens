@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import heroImage from "@/assets/hero-garden.jpg";
 import weddingImage from "@/assets/gallery-wedding.jpg";
 import retreatImage from "@/assets/gallery-retreat.jpg";
@@ -25,8 +26,45 @@ const photos = [
 
 const Gallery = () => {
   const [activeAlbum, setActiveAlbum] = useState("all");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxVisible, setLightboxVisible] = useState(false);
 
   const filtered = activeAlbum === "all" ? photos : photos.filter((p) => p.album === activeAlbum);
+
+  const openLightbox = (index: number) => {
+    setLightboxIndex(index);
+    requestAnimationFrame(() => setLightboxVisible(true));
+  };
+
+  const closeLightbox = () => {
+    setLightboxVisible(false);
+    setTimeout(() => setLightboxIndex(null), 300);
+  };
+
+  const goNext = useCallback(() => {
+    if (lightboxIndex === null) return;
+    setLightboxIndex((lightboxIndex + 1) % filtered.length);
+  }, [lightboxIndex, filtered.length]);
+
+  const goPrev = useCallback(() => {
+    if (lightboxIndex === null) return;
+    setLightboxIndex((lightboxIndex - 1 + filtered.length) % filtered.length);
+  }, [lightboxIndex, filtered.length]);
+
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowRight") goNext();
+      if (e.key === "ArrowLeft") goPrev();
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [lightboxIndex, goNext, goPrev]);
 
   return (
     <div>
@@ -62,7 +100,11 @@ const Gallery = () => {
       <section className="px-8 lg:px-16 pb-20">
         <div className="columns-1 md:columns-2 lg:columns-3 gap-4 max-w-6xl">
           {filtered.map((photo, i) => (
-            <div key={i} className="mb-4 break-inside-avoid overflow-hidden rounded-sm group">
+            <div
+              key={i}
+              className="mb-4 break-inside-avoid overflow-hidden rounded-sm group cursor-pointer"
+              onClick={() => openLightbox(i)}
+            >
               <img
                 src={photo.src}
                 alt={photo.alt}
@@ -73,6 +115,60 @@ const Gallery = () => {
           ))}
         </div>
       </section>
+
+      {/* Lightbox */}
+      {lightboxIndex !== null && (
+        <div
+          className={`fixed inset-0 z-50 flex items-center justify-center transition-all duration-300 ${
+            lightboxVisible ? "bg-foreground/90 backdrop-blur-sm" : "bg-foreground/0"
+          }`}
+          onClick={closeLightbox}
+        >
+          {/* Close */}
+          <button
+            onClick={closeLightbox}
+            className="absolute top-6 right-6 text-background/70 hover:text-background transition-colors z-10"
+          >
+            <X className="h-7 w-7" />
+          </button>
+
+          {/* Prev */}
+          <button
+            onClick={(e) => { e.stopPropagation(); goPrev(); }}
+            className="absolute left-4 md:left-8 text-background/60 hover:text-background transition-colors z-10"
+          >
+            <ChevronLeft className="h-10 w-10" />
+          </button>
+
+          {/* Image */}
+          <img
+            src={filtered[lightboxIndex].src}
+            alt={filtered[lightboxIndex].alt}
+            onClick={(e) => e.stopPropagation()}
+            className={`max-h-[85vh] max-w-[90vw] object-contain rounded-sm shadow-2xl transition-all duration-300 ${
+              lightboxVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+            }`}
+          />
+
+          {/* Next */}
+          <button
+            onClick={(e) => { e.stopPropagation(); goNext(); }}
+            className="absolute right-4 md:right-8 text-background/60 hover:text-background transition-colors z-10"
+          >
+            <ChevronRight className="h-10 w-10" />
+          </button>
+
+          {/* Caption & counter */}
+          <div
+            className={`absolute bottom-8 text-center text-background/80 font-body text-sm tracking-wide transition-all duration-300 ${
+              lightboxVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
+            }`}
+          >
+            <p className="mb-1">{filtered[lightboxIndex].alt}</p>
+            <p className="text-background/50">{lightboxIndex + 1} / {filtered.length}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
