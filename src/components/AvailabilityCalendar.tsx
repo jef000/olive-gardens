@@ -6,7 +6,11 @@ import { venueSpaces, getBookingsForSpace, getBookingForDate, type BookedSlot } 
 import { format } from "date-fns";
 import { CalendarIcon, Users, Info } from "lucide-react";
 
-export function AvailabilityCalendar() {
+interface AvailabilityCalendarProps {
+  onSelectBooking?: (spaceId: string, date: string) => void;
+}
+
+export function AvailabilityCalendar({ onSelectBooking }: AvailabilityCalendarProps = {}) {
   const navigate = useNavigate();
   const [selectedSpaceId, setSelectedSpaceId] = useState(venueSpaces[0].id);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
