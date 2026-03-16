@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { useScrollReveal } from "@/hooks/useScrollReveal";
+import { motion, useScroll, useTransform } from "framer-motion";
 import heroImage from "@/assets/hero-garden.jpg";
 import weddingImage from "@/assets/gallery-wedding.jpg";
 import retreatImage from "@/assets/gallery-retreat.jpg";
 import diningImage from "@/assets/gallery-dining.jpg";
-import { ArrowDown, Star } from "lucide-react";
+import { ArrowDown, Star, ChevronRight } from "lucide-react";
 
 const services = [
   {
@@ -45,312 +45,405 @@ const stats = [
   { value: "12", label: "Years of service" },
 ];
 
-/* Reusable scroll-reveal wrapper */
-function Reveal({
-  children,
-  animation = "animate-slide-up",
-  delay = 0,
-  className = "",
-}: {
-  children: React.ReactNode;
-  animation?: string;
-  delay?: number;
-  className?: string;
-}) {
-  const [ref, isVisible] = useScrollReveal<HTMLDivElement>();
-  return (
-    <div
-      ref={ref}
-      className={`${className} ${isVisible ? animation : "opacity-0"}`}
-      style={isVisible && delay ? { animationDelay: `${delay}s` } : undefined}
-    >
-      {children}
-    </div>
-  );
-}
-
 const Index = () => {
   const [heroLoaded, setHeroLoaded] = useState(false);
-  const [scrollY, setScrollY] = useState(0);
+  
+  // Framer Motion scroll effects for parallax
+  const { scrollY } = useScroll();
+  const y = useTransform(scrollY, [0, 1000], [0, 300]);
+  const opacity = useTransform(scrollY, [0, 500], [1, 0]);
 
-  /* Parallax for hero */
-  useEffect(() => {
-    const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  // Animation variants
+  const fadeIn = {
+    hidden: { opacity: 0, y: 30 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" as const } }
+  };
 
-  /* Scroll-reveal refs for major sections */
-  const [introRef, introVisible] = useScrollReveal<HTMLElement>();
-  const [statsRef, statsVisible] = useScrollReveal<HTMLElement>();
-  const [servicesRef, servicesVisible] = useScrollReveal<HTMLElement>();
-  const [testimonialRef, testimonialVisible] = useScrollReveal<HTMLElement>();
-  const [ctaRef, ctaVisible] = useScrollReveal<HTMLElement>();
+  const staggerContainer = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.2, delayChildren: 0.3 }
+    }
+  };
 
   return (
     <div className="overflow-x-hidden">
       {/* ═══ Hero Section ═══ */}
-      <section className="relative h-[100vh] overflow-hidden">
-        {/* Parallax background with Ken Burns */}
-        <div
-          className="absolute inset-0 will-change-transform"
-          style={{ transform: `translateY(${scrollY * 0.35}px)` }}
+      <section className="relative h-screen min-h-[600px] flex items-center justify-center overflow-hidden">
+        {/* Parallax background */}
+        <motion.div 
+          className="absolute inset-0 w-full h-[120%] z-0"
+          style={{ y }}
         >
+          <div className="absolute inset-0 bg-black/40 z-10" /> {/* Dark overlay for better text readability */}
           <img
             src={heroImage}
-            alt="Olive Retreat Gardens — lush grounds with olive trees, pathways, and event canopy in the Meru highlands"
-            className={`absolute inset-0 w-full h-[120%] object-cover transition-opacity duration-1000 ${
-              heroLoaded ? "opacity-100 animate-ken-burns" : "opacity-0"
+            alt="Olive Retreat Gardens"
+            className={`w-full h-full object-cover transition-transform duration-[10s] ease-out ${
+              heroLoaded ? "scale-105" : "scale-100"
             }`}
             onLoad={() => setHeroLoaded(true)}
           />
-        </div>
+        </motion.div>
 
-        {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-foreground/70 via-foreground/20 to-transparent" />
-
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-end h-full px-8 lg:px-16 pb-20 lg:pb-28 max-w-4xl">
-          <div
-            className={`transition-all duration-1000 ${
-              heroLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}
+        {/* Hero Content */}
+        <div className="relative z-20 container mx-auto px-6 text-center text-white pt-20">
+          <motion.div
+            initial="hidden"
+            animate={heroLoaded ? "visible" : "hidden"}
+            variants={staggerContainer}
+            className="max-w-4xl mx-auto flex flex-col items-center"
           >
-            <p className="font-body text-sm uppercase tracking-[0.3em] text-primary-foreground/60 mb-4">
-              Meru Highlands · Kenya
-            </p>
-            <h1 className="font-heading text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-semibold text-primary-foreground leading-[1.1] mb-6">
-              A sanctuary for
-              <br />
-              <span className="italic text-primary">gathering</span>,{" "}
-              <span className="italic text-primary">healing</span>,
-              <br />
-              and <span className="italic text-primary">celebration</span>
-            </h1>
-          </div>
-
-          <p
-            className={`font-body text-lg text-primary-foreground/80 max-w-xl mb-10 transition-all duration-1000 delay-300 ${
-              heroLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}
-          >
-            Nestled in the highlands of Meru, Olive Retreat Gardens offers grounds of extraordinary beauty for weddings, retreats, counselling, and community events.
-          </p>
-
-          <div
-            className={`flex flex-wrap gap-4 transition-all duration-1000 delay-500 ${
-              heroLoaded ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-            }`}
-          >
-            <Link to="/availability" className="cta-primary group">
-              Check Availability
-              <span className="inline-block transition-transform duration-300 group-hover:translate-x-1 ml-1">→</span>
-            </Link>
-            <Link
-              to="/services"
-              className="cta-outline border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 backdrop-blur-sm"
+            <motion.span 
+              variants={fadeIn}
+              className="inline-block py-1 px-3 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-sm font-medium tracking-[0.2em] uppercase mb-8"
             >
-              View Packages
-            </Link>
-          </div>
+              Meru Highlands, Kenya
+            </motion.span>
+            
+            <motion.h1 
+              variants={fadeIn}
+              className="text-5xl md:text-7xl lg:text-8xl font-serif font-light leading-tight mb-6"
+            >
+              Where Nature <br/> Meets <span className="italic text-white/90">Elegance</span>
+            </motion.h1>
+            
+            <motion.p 
+              variants={fadeIn}
+              className="text-lg md:text-xl font-light max-w-2xl text-white/80 mb-10 leading-relaxed"
+            >
+              Discover a sanctuary of extraordinary beauty for your weddings, retreats, and celebrations amidst acres of lush manicured gardens.
+            </motion.p>
+            
+            <motion.div 
+              variants={fadeIn}
+              className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
+            >
+              <Link 
+                to="/services" 
+                className="w-full sm:w-auto px-8 py-4 bg-white text-black rounded-full font-medium transition-all hover:bg-black hover:text-white hover:scale-105 duration-300 flex items-center justify-center gap-2"
+              >
+                Explore Venues
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+              <Link 
+                to="/contact" 
+                className="w-full sm:w-auto px-8 py-4 bg-transparent border border-white/30 text-white rounded-full font-medium transition-all hover:bg-white/10 duration-300"
+              >
+                Plan Your Event
+              </Link>
+            </motion.div>
+          </motion.div>
         </div>
 
         {/* Scroll indicator */}
-        <div
-          className={`absolute bottom-6 left-1/2 -translate-x-1/2 z-10 animate-float transition-opacity duration-1000 delay-1000 ${
-            heroLoaded ? "opacity-60" : "opacity-0"
-          }`}
+        <motion.div 
+          style={{ opacity }}
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2"
         >
-          <ArrowDown size={20} className="text-primary-foreground" />
-        </div>
+          <span className="text-xs uppercase tracking-widest text-white/60">Scroll</span>
+          <motion.div
+            animate={{ y: [0, 10, 0] }}
+            transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+          >
+            <ArrowDown className="w-4 h-4 text-white/80" />
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* ═══ Introduction ═══ */}
-      <section
-        ref={introRef}
-        className="px-8 lg:px-16 py-24 lg:py-32 max-w-5xl"
-      >
-        <p
-          className={`font-heading text-2xl md:text-3xl lg:text-4xl text-foreground leading-relaxed font-normal italic transition-all duration-1000 ${
-            introVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
-          }`}
-        >
-          "A place where the earth meets intention — where every path leads somewhere worth arriving."
-        </p>
-        <div
-          className={`mt-8 h-px bg-primary ${
-            introVisible ? "animate-grow-width" : "w-0"
-          }`}
-        />
-        <p
-          className={`mt-8 section-subheading transition-all duration-1000 delay-300 ${
-            introVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
-          }`}
-        >
-          Founded by Rev. Prof. Gitonga and Dr. Monica Gitonga, Olive Retreat Gardens was born from a vision of creating sacred space — for families, for communities, for those seeking restoration. Our grounds span acres of manicured gardens, olive groves, and purpose-built venues in the serene Meru highlands.
-        </p>
-        <Link
-          to="/about"
-          className={`inline-block mt-8 font-body text-sm tracking-wide uppercase text-primary hover:text-foreground transition-all duration-500 delay-500 ${
-            introVisible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"
-          }`}
-        >
-          Read our story →
-        </Link>
+      <section className="px-8 lg:px-16 py-24 lg:py-32 max-w-7xl mx-auto">
+        <div className="grid lg:grid-cols-2 gap-16 items-center">
+          <motion.div 
+            initial={{ opacity: 0, x: -50 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 1 }}
+            className="relative"
+          >
+            <div className="aspect-[4/5] rounded-2xl overflow-hidden shadow-2xl relative z-10">
+              <img 
+                src={weddingImage} 
+                alt="Beautiful wedding setup at Olive Retreat Gardens" 
+                className="w-full h-full object-cover"
+              />
+            </div>
+            {/* Decorative background element */}
+            <div className="absolute -top-8 -left-8 w-64 h-64 bg-olive-cream rounded-full -z-10 blur-2xl opacity-70" />
+            <div className="absolute -bottom-12 -right-12 w-full h-full border border-primary/20 rounded-2xl -z-10" />
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 1, delay: 0.2 }}
+            className="flex flex-col justify-center"
+          >
+            <span className="text-primary font-medium tracking-widest uppercase text-sm mb-6 block">Our Story</span>
+            
+            <p className="text-3xl md:text-4xl lg:text-5xl text-foreground/90 leading-tight font-serif italic mb-10">
+              "A place where the earth meets intention — where every path leads somewhere worth arriving."
+            </p>
+            
+            <div className="space-y-6">
+              <p className="text-lg text-muted-foreground leading-relaxed">
+                Founded by Rev. Prof. Gitonga and Dr. Monica Gitonga, Olive Retreat Gardens was born from a vision of creating sacred space — for families, for communities, for those seeking restoration. 
+              </p>
+              <p className="text-lg text-muted-foreground leading-relaxed">
+                Our grounds span acres of manicured gardens, olive groves, and purpose-built venues in the serene Meru highlands, meticulously designed to elevate every moment of your gathering.
+              </p>
+            </div>
+            
+            <div className="mt-12">
+              <Link
+                to="/about"
+                className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary text-white rounded-full font-medium hover:bg-primary/90 transition-all duration-300 hover:shadow-lg"
+              >
+                Discover Our Heritage <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </motion.div>
+        </div>
       </section>
 
       {/* ═══ Stats Counter ═══ */}
-      <section
-        ref={statsRef}
-        className="px-8 lg:px-16 py-16 border-y border-border bg-muted/30"
-      >
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto text-center">
+      <section className="px-8 lg:px-16 py-20 bg-primary text-primary-foreground relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-12 max-w-6xl mx-auto text-center relative z-10">
           {stats.map((stat, i) => (
-            <div
+            <motion.div
               key={stat.label}
-              className={`transition-all duration-700 ${
-                statsVisible
-                  ? "opacity-100 translate-y-0"
-                  : "opacity-0 translate-y-8"
-              }`}
-              style={{ transitionDelay: statsVisible ? `${i * 0.15}s` : "0s" }}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: i * 0.15 }}
+              className="flex flex-col items-center justify-center space-y-3"
             >
-              <p className="font-heading text-3xl md:text-4xl font-semibold text-primary">
+              <span className="font-serif text-5xl md:text-6xl lg:text-7xl font-light">
                 {stat.value}
-              </p>
-              <p className="font-body text-sm text-muted-foreground mt-1 uppercase tracking-wide">
+              </span>
+              <span className="font-medium text-sm md:text-base tracking-widest uppercase text-white/80">
                 {stat.label}
-              </p>
-            </div>
+              </span>
+              <div className="w-12 h-px bg-white/30 mt-4" />
+            </motion.div>
           ))}
         </div>
       </section>
 
       {/* ═══ Services Preview ═══ */}
       <section
-        ref={servicesRef}
-        className="px-8 lg:px-16 py-20 lg:py-28 bg-olive-cream"
+        className="px-8 lg:px-16 py-24 lg:py-32 bg-olive-cream/50"
       >
-        <div
-          className={`transition-all duration-800 ${
-            servicesVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-10"
-          }`}
-        >
-          <h2 className="section-heading mb-4">What we offer</h2>
-          <p className="section-subheading mb-14">
-            From grand celebrations to intimate healing sessions, our spaces adapt to your needs.
-          </p>
-        </div>
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-16"
+          >
+            <span className="text-primary font-medium tracking-widest uppercase text-sm mb-4 block">Our Spaces</span>
+            <h2 className="text-4xl md:text-5xl font-serif font-light mb-6">Designed for Every Occasion</h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
+              From grand celebrations to intimate healing sessions, our spaces adapt to your unique vision.
+            </p>
+          </motion.div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {services.map((service, i) => (
-            <Reveal
-              key={service.title}
-              animation="animate-scale-in"
-              delay={i * 0.15}
-            >
-              <div className="card-garden group cursor-pointer overflow-hidden">
-                <div className="aspect-[4/3] overflow-hidden">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {services.map((service, i) => (
+              <motion.div
+                key={service.title}
+                initial={{ opacity: 0, y: 50 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-50px" }}
+                transition={{ duration: 0.6, delay: i * 0.2 }}
+                className="group relative rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 bg-white"
+              >
+                <div className="aspect-[4/5] overflow-hidden relative">
+                  <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-500 z-10" />
                   <img
                     src={service.image}
                     alt={service.title}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                     loading="lazy"
                   />
+                  
+                  <div className="absolute bottom-0 left-0 right-0 p-8 z-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
+                    <h3 className="text-2xl font-serif text-white mb-2">
+                      {service.title}
+                    </h3>
+                    <p className="text-white/80 text-sm leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-100">
+                      {service.description}
+                    </p>
+                    <div className="mt-6 flex items-center text-white text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-500 delay-200">
+                      Explore Venue <ChevronRight className="w-4 h-4 ml-1" />
+                    </div>
+                  </div>
                 </div>
-                <div className="p-6 transition-colors duration-300 group-hover:bg-primary/5">
-                  <h3 className="font-heading text-xl font-semibold mb-2 group-hover:text-primary transition-colors duration-300">
-                    {service.title}
-                  </h3>
-                  <p className="font-body text-sm text-muted-foreground leading-relaxed">
-                    {service.description}
-                  </p>
-                  <span className="inline-block mt-4 font-body text-xs uppercase tracking-wide text-primary opacity-0 -translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                    Learn more →
-                  </span>
-                </div>
-              </div>
-            </Reveal>
-          ))}
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div 
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="mt-16 text-center"
+          >
+            <Link 
+              to="/services" 
+              className="inline-flex items-center gap-2 px-8 py-4 border border-black text-black rounded-full font-medium hover:bg-black hover:text-white transition-colors duration-300"
+            >
+              View All Packages
+              <ChevronRight className="w-4 h-4" />
+            </Link>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ═══ Visual Marquee / Gallery Preview ═══ */}
+      <section className="py-24 bg-white overflow-hidden">
+        <div className="max-w-7xl mx-auto px-8 lg:px-16 mb-16 text-center">
+          <span className="text-primary font-medium tracking-widest uppercase text-sm mb-4 block">Gallery</span>
+          <h2 className="text-4xl md:text-5xl font-serif font-light mb-6">Moments Captured</h2>
+          <p className="text-muted-foreground max-w-2xl mx-auto text-lg">Glimpses of beauty, joy, and peace across our expansive grounds.</p>
         </div>
 
-        <Reveal className="mt-12">
-          <Link to="/services" className="cta-outline group">
-            Explore all packages
-            <span className="inline-block transition-transform duration-300 group-hover:translate-x-1 ml-1">→</span>
+        <div className="relative w-full flex overflow-x-hidden">
+          <motion.div
+            animate={{ x: ["0%", "-50%"] }}
+            transition={{
+              duration: 30,
+              ease: "linear",
+              repeat: Infinity,
+            }}
+            className="flex gap-6 px-6 whitespace-nowrap"
+          >
+            {/* Duplicate array for seamless infinite scrolling */}
+            {[...services, ...services].map((item, idx) => (
+              <div 
+                key={`${item.title}-${idx}`}
+                className="relative w-[300px] md:w-[400px] h-[400px] md:h-[500px] rounded-2xl overflow-hidden shrink-0 group cursor-pointer"
+              >
+                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors duration-500 z-10" />
+                <img 
+                  src={item.image} 
+                  alt={item.title} 
+                  className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
+                />
+              </div>
+            ))}
+          </motion.div>
+        </div>
+
+        <div className="mt-16 text-center">
+          <Link
+            to="/gallery"
+            className="inline-flex items-center gap-2 px-8 py-4 border border-black text-black rounded-full font-medium hover:bg-black hover:text-white transition-colors duration-300"
+          >
+            View Full Gallery <ChevronRight className="w-4 h-4" />
           </Link>
-        </Reveal>
+        </div>
       </section>
 
       {/* ═══ Testimonials ═══ */}
-      <section
-        ref={testimonialRef}
-        className="px-8 lg:px-16 py-24 lg:py-32 max-w-4xl"
-      >
-        <div
-          className={`transition-all duration-700 ${
-            testimonialVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
+      <section className="px-8 lg:px-16 py-24 lg:py-32 max-w-6xl mx-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-100px" }}
+          transition={{ duration: 0.8 }}
+          className="flex flex-col items-center mb-16 text-center"
         >
-          <div className="flex items-center gap-2 mb-12">
-            <h2 className="section-heading">What people say</h2>
-            <Star size={20} className="text-primary animate-float" />
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }}>
+              <Star size={24} className="text-primary" />
+            </motion.div>
+            <h2 className="text-4xl md:text-5xl font-serif font-light">Words of Grace</h2>
           </div>
-        </div>
+          <p className="text-lg text-muted-foreground">Stories from those who have experienced the magic of Olive Retreat.</p>
+        </motion.div>
 
-        <div className="space-y-14">
+        <div className="grid md:grid-cols-2 gap-12 lg:gap-16">
           {testimonials.map((t, i) => (
-            <Reveal key={i} animation="animate-slide-in-left" delay={i * 0.2}>
-              <blockquote className="border-l-2 border-primary pl-8 group hover:border-l-4 transition-all duration-300">
-                <p className="font-heading text-lg lg:text-xl italic text-foreground/90 leading-relaxed">
-                  "{t.quote}"
-                </p>
-                <footer className="mt-4 font-body text-sm text-muted-foreground">
-                  <strong className="text-foreground">{t.author}</strong> — {t.event}
-                </footer>
-              </blockquote>
-            </Reveal>
+            <motion.blockquote
+              key={i}
+              initial={{ opacity: 0, x: i % 2 === 0 ? -30 : 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: "-100px" }}
+              transition={{ duration: 0.8, delay: i * 0.2 }}
+              className="relative p-8 rounded-3xl bg-white border border-border shadow-sm hover:shadow-md transition-shadow duration-300"
+            >
+              <div className="absolute top-8 left-8 text-6xl text-primary/10 font-serif leading-none">"</div>
+              <p className="relative z-10 font-serif text-xl lg:text-2xl italic text-foreground/90 leading-relaxed mb-8 pt-6">
+                {t.quote}
+              </p>
+              <footer className="flex flex-col">
+                <strong className="text-foreground font-medium uppercase tracking-wide text-sm">{t.author}</strong>
+                <span className="text-muted-foreground text-sm mt-1">{t.event}</span>
+              </footer>
+            </motion.blockquote>
           ))}
         </div>
       </section>
 
       {/* ═══ CTA Band ═══ */}
-      <section
-        ref={ctaRef}
-        className="px-8 lg:px-16 py-20 bg-foreground relative overflow-hidden"
-      >
+      <section className="px-8 lg:px-16 py-32 bg-black relative overflow-hidden">
         {/* Decorative background */}
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-primary blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-accent blur-3xl" />
+        <div className="absolute inset-0">
+          <motion.div 
+            animate={{ 
+              scale: [1, 1.2, 1],
+              opacity: [0.3, 0.5, 0.3] 
+            }}
+            transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+            className="absolute top-0 right-0 w-[500px] h-[500px] rounded-full bg-primary/20 blur-[100px]" 
+          />
+          <motion.div 
+            animate={{ 
+              scale: [1, 1.3, 1],
+              opacity: [0.2, 0.4, 0.2] 
+            }}
+            transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 2 }}
+            className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-white/10 blur-[100px]" 
+          />
         </div>
 
-        <div
-          className={`relative z-10 max-w-3xl transition-all duration-1000 ${
-            ctaVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-12"
-          }`}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 1 }}
+          className="relative z-10 max-w-4xl mx-auto text-center"
         >
-          <h2 className="font-heading text-3xl md:text-4xl lg:text-5xl text-primary-foreground font-semibold mb-4 leading-tight">
-            Begin planning your
-            <br />
-            <span className="italic text-primary">gathering</span>
+          <span className="text-white/60 font-medium tracking-widest uppercase text-sm mb-6 block">Take the First Step</span>
+          <h2 className="text-5xl md:text-6xl lg:text-7xl text-white font-serif font-light mb-8 leading-tight">
+            Begin Planning Your <br />
+            <span className="italic text-white/90">Masterpiece</span>
           </h2>
-          <p className="font-body text-primary-foreground/60 mb-10 max-w-xl text-lg">
+          <p className="text-white/70 mb-12 max-w-2xl mx-auto text-lg md:text-xl font-light">
             Whether it's a wedding, retreat, training workshop, or counselling session — we're here to make it extraordinary.
           </p>
-          <div className="flex flex-wrap gap-4">
-            <Link to="/availability" className="cta-primary group">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+            <Link 
+              to="/availability" 
+              className="w-full sm:w-auto px-8 py-4 bg-white text-black rounded-full font-medium transition-all hover:bg-primary hover:text-white hover:scale-105 duration-300 flex items-center justify-center gap-2"
+            >
               Check Availability
-              <span className="inline-block transition-transform duration-300 group-hover:translate-x-1 ml-1">→</span>
+              <ChevronRight className="w-4 h-4" />
             </Link>
             <Link
               to="/contact"
-              className="cta-outline border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/10"
+              className="w-full sm:w-auto px-8 py-4 bg-transparent border border-white/30 text-white rounded-full font-medium transition-all hover:bg-white/10 duration-300"
             >
               Get in Touch
             </Link>
           </div>
-        </div>
+        </motion.div>
       </section>
 
       {/* ═══ Footer ═══ */}
