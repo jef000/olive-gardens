@@ -166,7 +166,7 @@ const Contact = () => {
                   <h3 className="text-sm font-medium uppercase tracking-widest text-muted-foreground mb-2">Phone & WhatsApp</h3>
                   <p className="text-lg text-foreground">+254 700 000 000</p>
                   <a
-                    href="https://wa.me/254700000000"
+                    href="https://wa.me/254700000000?text=Hello%21%20I%27m%20planning%20to%20have%20an%20event%20at%20Olive%20Retreat%20Gardens%20and%20would%20love%20to%20discuss%20availability%20and%20services.%20Could%20you%20please%20share%20more%20details%3F"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-block mt-3 text-primary hover:text-primary/80 font-medium transition-colors"
