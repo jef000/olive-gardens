@@ -16,86 +16,80 @@ export function SiteLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
-      {/* Fixed Book Now CTA - top right */}
-      <div className="fixed top-4 right-4 z-50">
-        <Link to="/book" className="cta-primary shadow-lg">
-          Book Now
-        </Link>
-      </div>
-
-      {/* Mobile header */}
-      <header className="lg:hidden flex items-center justify-between px-6 py-4 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-40">
-        <Link to="/" className="font-heading text-xl font-semibold text-foreground">
-          Olive Retreat
-        </Link>
-        <button
-          onClick={() => setMobileOpen(!mobileOpen)}
-          className="text-foreground p-2 mr-24"
-          aria-label="Toggle menu"
-        >
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </header>
-
-      {/* Mobile nav overlay */}
-      {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-30 bg-background/98 backdrop-blur-sm pt-20 px-8">
-          <nav className="flex flex-col gap-2">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setMobileOpen(false)}
-                className={`nav-link text-2xl ${
-                  location.pathname === item.path ? "nav-link-active" : ""
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      )}
-
-      {/* Desktop vertical navigation — book table of contents style */}
-      <aside className="hidden lg:flex flex-col justify-between w-64 xl:w-72 border-r border-border bg-background fixed top-0 left-0 h-screen px-8 py-10">
-        <div>
-          <Link to="/" className="block mb-12">
-            <h2 className="font-heading text-2xl font-semibold text-foreground leading-tight">
+    <div className="min-h-screen flex flex-col">
+      {/* Top navbar */}
+      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
+        <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
+          <Link to="/" className="flex flex-col">
+            <span className="font-heading text-xl font-semibold text-foreground leading-tight">
               Olive Retreat
-            </h2>
-            <p className="font-heading text-sm italic text-muted-foreground mt-1">
+            </span>
+            <span className="font-heading text-xs italic text-muted-foreground">
               Gardens · Meru
-            </p>
+            </span>
           </Link>
 
-          <nav className="flex flex-col gap-1">
+          {/* Desktop nav */}
+          <nav className="hidden md:flex items-center gap-6">
             {navItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`nav-link ${
-                  location.pathname === item.path ? "nav-link-active" : ""
+                className={`font-heading text-sm tracking-wide transition-colors duration-300 ${
+                  location.pathname === item.path
+                    ? "text-foreground font-semibold"
+                    : "text-foreground/70 hover:text-foreground"
                 }`}
               >
                 {item.label}
               </Link>
             ))}
           </nav>
+
+          <div className="flex items-center gap-4">
+            <Link to="/book" className="cta-primary hidden sm:inline-block">
+              Book Now
+            </Link>
+            <button
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="md:hidden text-foreground p-2"
+              aria-label="Toggle menu"
+            >
+              {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
         </div>
 
-        <div className="text-xs text-muted-foreground font-body">
-          <p>Meru, Kenya</p>
-          <p className="mt-1">+254 700 000 000</p>
-          <p className="mt-1">info@oliveretreat.co.ke</p>
-        </div>
-      </aside>
+        {/* Mobile nav dropdown */}
+        {mobileOpen && (
+          <div className="md:hidden border-t border-border bg-background px-6 py-4">
+            <nav className="flex flex-col gap-2">
+              {navItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setMobileOpen(false)}
+                  className={`nav-link text-lg ${
+                    location.pathname === item.path ? "nav-link-active" : ""
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+              <Link
+                to="/book"
+                onClick={() => setMobileOpen(false)}
+                className="cta-primary text-center mt-2 sm:hidden"
+              >
+                Book Now
+              </Link>
+            </nav>
+          </div>
+        )}
+      </header>
 
       {/* Main content */}
-      <main className="flex-1 lg:ml-64 xl:ml-72">
-        {children}
-      </main>
+      <main className="flex-1">{children}</main>
     </div>
   );
 }
