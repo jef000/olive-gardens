@@ -160,7 +160,13 @@ export function AvailabilityCalendar({ onSelectBooking }: AvailabilityCalendarPr
                     This date is open for booking at {selectedSpace.name}.
                   </p>
                   <button
-                    onClick={() => navigate(`/book?space=${selectedSpaceId}&date=${selectedDateStr}`)}
+                    onClick={() => {
+                      if (onSelectBooking) {
+                        onSelectBooking(selectedSpaceId, selectedDateStr!);
+                      } else {
+                        navigate(`/book?space=${selectedSpaceId}&date=${selectedDateStr}`);
+                      }
+                    }}
                     className="cta-primary inline-block text-center"
                   >
                     Book This Date

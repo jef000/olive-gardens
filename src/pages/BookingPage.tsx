@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
 
 const spaces = [
   { id: "main-arena", name: "Main Arena", capacity: 500 },
