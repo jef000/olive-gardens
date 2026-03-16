@@ -66,7 +66,7 @@ const BookingPage = () => {
       </section>
 
       <section className="px-8 lg:px-16 pb-20">
-        <div className="max-w-3xl">
+        <div className="max-w-5xl">
         {step === 1 && (
             <div className="space-y-8">
               <h3 className="font-heading text-lg font-semibold mb-4">Check availability & select a date</h3>
