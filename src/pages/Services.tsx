@@ -10,6 +10,7 @@ const packages = [
     category: "Venue Hire",
     items: [
       {
+        id: "main-arena",
         title: "Main Arena",
         capacity: "Up to 500 guests",
         description: "Our signature open-air canopied arena, set among olive trees with panoramic mountain views. Ideal for weddings, conferences, and large celebrations.",
@@ -18,6 +19,7 @@ const packages = [
         image: weddingImage,
       },
       {
+        id: "garden-hall",
         title: "Garden Hall",
         capacity: "Up to 120 guests",
         description: "An intimate indoor-outdoor space with floor-to-ceiling windows overlooking the gardens. Perfect for workshops, retreats, and smaller celebrations.",
@@ -31,6 +33,7 @@ const packages = [
     category: "Counselling & Training",
     items: [
       {
+        id: "therapy-room",
         title: "Individual Counselling",
         capacity: "1-on-1 sessions",
         description: "Professional counselling with certified therapists in a private, serene setting. Confidential intake and secure record keeping.",
@@ -39,6 +42,7 @@ const packages = [
         image: retreatImage,
       },
       {
+        id: "garden-hall",
         title: "Group Workshops",
         capacity: "10–30 participants",
         description: "Facilitated workshops on leadership, wellness, conflict resolution, and personal development. Multi-day retreats available.",
@@ -52,6 +56,7 @@ const packages = [
     category: "Catering",
     items: [
       {
+        id: "main-arena",
         title: "Full Catering Package",
         capacity: "50–500 guests",
         description: "Farm-to-table dining with locally sourced ingredients. Menus customized to your event — from elegant plated dinners to buffet-style celebrations.",
@@ -168,7 +173,7 @@ const Services = () => {
                         <span className="text-xl font-serif text-foreground">{item.price}</span>
                       </div>
                       <Link 
-                        to="/book" 
+                        to={`/book?space=${item.id}`}
                         className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-black text-white rounded-full text-sm font-medium hover:bg-primary transition-colors duration-300"
                       >
                         Book Now <ChevronRight size={16} />

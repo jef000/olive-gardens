@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
@@ -18,7 +18,7 @@ const BookingPage = () => {
   const hasPreselection = prefilledSpace && prefilledDate && spaces.some(s => s.id === prefilledSpace);
 
   const [step, setStep] = useState(hasPreselection ? 2 : 1);
-  const [selectedSpace, setSelectedSpace] = useState(hasPreselection ? prefilledSpace : "");
+  const [selectedSpace, setSelectedSpace] = useState(prefilledSpace || spaces[0].id);
   const [selectedDate, setSelectedDate] = useState(prefilledDate);
   const [formData, setFormData] = useState({
     name: "",
@@ -116,6 +116,7 @@ const BookingPage = () => {
                 
                 <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-border/50 p-6 md:p-10">
                   <AvailabilityCalendar
+                    initialSpaceId={selectedSpace}
                     onSelectBooking={(spaceId, date) => {
                       setSelectedSpace(spaceId);
                       setSelectedDate(date);

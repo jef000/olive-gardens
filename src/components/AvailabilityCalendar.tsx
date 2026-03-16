@@ -8,11 +8,12 @@ import { CalendarIcon, Users, Info } from "lucide-react";
 
 interface AvailabilityCalendarProps {
   onSelectBooking?: (spaceId: string, date: string) => void;
+  initialSpaceId?: string;
 }
 
-export function AvailabilityCalendar({ onSelectBooking }: AvailabilityCalendarProps = {}) {
+export function AvailabilityCalendar({ onSelectBooking, initialSpaceId }: AvailabilityCalendarProps = {}) {
   const navigate = useNavigate();
-  const [selectedSpaceId, setSelectedSpaceId] = useState(venueSpaces[0].id);
+  const [selectedSpaceId, setSelectedSpaceId] = useState(initialSpaceId || venueSpaces[0].id);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
 
   const spaceBookings = useMemo(() => getBookingsForSpace(selectedSpaceId), [selectedSpaceId]);
