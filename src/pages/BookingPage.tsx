@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
 
 const spaces = [
   { id: "main-arena", name: "Main Arena", capacity: 500 },
@@ -65,51 +66,17 @@ const BookingPage = () => {
       </section>
 
       <section className="px-8 lg:px-16 pb-20">
-        <div className="max-w-3xl">
-          {step === 1 && (
+        <div className="max-w-5xl">
+        {step === 1 && (
             <div className="space-y-8">
-              {/* Space selection */}
-              <div>
-                <h3 className="font-heading text-lg font-semibold mb-4">Choose a space</h3>
-                <div className="grid sm:grid-cols-3 gap-4">
-                  {spaces.map((space) => (
-                    <button
-                      key={space.id}
-                      onClick={() => setSelectedSpace(space.id)}
-                      className={`p-4 rounded-sm border text-left transition-colors ${
-                        selectedSpace === space.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-primary/50"
-                      }`}
-                    >
-                      <h4 className="font-heading text-base font-semibold">{space.name}</h4>
-                      <p className="font-body text-xs text-muted-foreground mt-1">
-                        Up to {space.capacity} guests
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Date selection */}
-              <div>
-                <h3 className="font-heading text-lg font-semibold mb-4">Preferred date</h3>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-4 py-3 bg-background border border-border rounded-sm font-body text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  min={new Date().toISOString().split("T")[0]}
-                />
-              </div>
-
-              <button
-                onClick={() => selectedSpace && selectedDate && setStep(2)}
-                disabled={!selectedSpace || !selectedDate}
-                className="cta-primary disabled:opacity-40"
-              >
-                Continue
-              </button>
+              <h3 className="font-heading text-lg font-semibold mb-4">Check availability & select a date</h3>
+              <AvailabilityCalendar
+                onSelectBooking={(spaceId, date) => {
+                  setSelectedSpace(spaceId);
+                  setSelectedDate(date);
+                  setStep(2);
+                }}
+              />
             </div>
           )}
 

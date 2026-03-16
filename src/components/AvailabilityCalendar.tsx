@@ -6,7 +6,11 @@ import { venueSpaces, getBookingsForSpace, getBookingForDate, type BookedSlot } 
 import { format } from "date-fns";
 import { CalendarIcon, Users, Info } from "lucide-react";
 
-export function AvailabilityCalendar() {
+interface AvailabilityCalendarProps {
+  onSelectBooking?: (spaceId: string, date: string) => void;
+}
+
+export function AvailabilityCalendar({ onSelectBooking }: AvailabilityCalendarProps = {}) {
   const navigate = useNavigate();
   const [selectedSpaceId, setSelectedSpaceId] = useState(venueSpaces[0].id);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
@@ -156,7 +160,13 @@ export function AvailabilityCalendar() {
                     This date is open for booking at {selectedSpace.name}.
                   </p>
                   <button
-                    onClick={() => navigate(`/book?space=${selectedSpaceId}&date=${selectedDateStr}`)}
+                    onClick={() => {
+                      if (onSelectBooking) {
+                        onSelectBooking(selectedSpaceId, selectedDateStr!);
+                      } else {
+                        navigate(`/book?space=${selectedSpaceId}&date=${selectedDateStr}`);
+                      }
+                    }}
                     className="cta-primary inline-block text-center"
                   >
                     Book This Date
