@@ -38,15 +38,18 @@ app.use(
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
       
-      // Allow all origins in development
-      if (config.isDevelopment) {
-        return callback(null, true);
-      }
+      const allowedOrigins = [
+        ...config.cors.allowedOrigins,
+        
+        'http://localhost:5173',
+        'http://localhost:8080',
+        
+      ];
       
-      // Check against allowed origins in production
-      if (config.cors.allowedOrigins.includes(origin)) {
+      if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.warn(`CORS blocked origin: ${origin}`);
         callback(new Error('Not allowed by CORS'));
       }
     },
