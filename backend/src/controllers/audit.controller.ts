@@ -2,7 +2,7 @@
 // Handles audit log retrieval and statistics endpoints
 
 import { Request, Response, NextFunction } from 'express';
-import { AuditService } from '../utils/audit.service';
+import { AuditService } from '../services/audit.service';
 import { sendSuccess } from '../utils/response';
 import { AuditLogFilters, AuditResourceType } from '../types/audit';
 

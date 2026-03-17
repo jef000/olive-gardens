@@ -2,7 +2,7 @@
 // Automatically tracks and logs all HTTP requests for audit trail
 
 import { Request, Response, NextFunction } from 'express';
-import { AuditService } from '../utils/audit.service';
+import { AuditService } from '../services/audit.service';
 import { AuditAction, AuditResourceType, AuditStatus } from '../types/audit';
 
 // Extend Express Request to include audit context
