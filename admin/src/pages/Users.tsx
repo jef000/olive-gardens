@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Search, Edit, Trash2, Users as UsersIcon, Shield, ShieldAlert, Mail, Calendar, Key } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Users as UsersIcon, Shield, ShieldAlert, Mail, Calendar, Key, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import type { User, ApiResponse } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,9 @@ export default function Users() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -56,12 +59,7 @@ export default function Users() {
         return [];
       } catch (error) {
         console.error('Failed to fetch users:', error);
-        return [
-          { id: '1', email: 'admin@olivegarden.com', role: 'admin', created_at: new Date().toISOString() },
-          { id: '2', email: 'sarah.njiru@olivegarden.com', role: 'moderator', created_at: new Date(new Date().setDate(new Date().getDate() - 5)).toISOString() },
-          { id: '3', email: 'j.kamau@techcorp.co.ke', role: 'user', created_at: new Date(new Date().setDate(new Date().getDate() - 12)).toISOString() },
-          { id: '4', email: 'grace@leadership.org', role: 'user', created_at: new Date(new Date().setDate(new Date().getDate() - 25)).toISOString() },
-        ] as User[];
+        return [];
       }
     },
   });
@@ -74,23 +72,50 @@ export default function Users() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
-      await api.post('/auth/register', formData);
+      await api.post('/users', formData);
       setIsCreateDialogOpen(false);
       setFormData({ email: '', password: '', role: 'user' });
       refetch();
     } catch (error: any) {
       alert(error.response?.data?.message || 'Failed to create user');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleEditUser = (user: User) => {
+  const handleEditUserClick = (user: User) => {
+    setEditingUserId(user.id);
     setFormData({
       email: user.email,
-      password: '',
+      password: '', // Leave empty to not update password unless typed
       role: user.role,
     });
     setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUserId) return;
+    
+    setIsSubmitting(true);
+    try {
+      const payload: any = { role: formData.role };
+      if (formData.password) {
+        payload.password = formData.password;
+      }
+      
+      await api.put(`/users/${editingUserId}`, payload);
+      setIsEditDialogOpen(false);
+      setEditingUserId(null);
+      setFormData({ email: '', password: '', role: 'user' });
+      refetch();
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to update user');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleDeleteUser = async (userId: string) => {
@@ -227,7 +252,7 @@ export default function Users() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleEditUser(user)}
+                              onClick={() => handleEditUserClick(user)}
                               className="h-8 border-border/50 text-gray-600 hover:text-[#8b9172] hover:bg-[#8b9172]/5 hover:border-[#8b9172]/30"
                             >
                               <Edit className="w-4 h-4 mr-1.5" /> Edit
@@ -253,7 +278,9 @@ export default function Users() {
       </Card>
 
       {/* Create User Dialog */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+      <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+        if (!isSubmitting) setIsCreateDialogOpen(open);
+      }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="font-serif text-2xl">Invite New User</DialogTitle>
@@ -264,11 +291,11 @@ export default function Users() {
           <form onSubmit={handleCreateUser}>
             <div className="space-y-5 py-4">
               <div className="space-y-2.5">
-                <Label htmlFor="email" className="text-gray-700">Email Address</Label>
+                <Label htmlFor="create-email" className="text-gray-700">Email Address</Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <Input
-                    id="email"
+                    id="create-email"
                     type="email"
                     placeholder="name@example.com"
                     value={formData.email}
@@ -277,13 +304,14 @@ export default function Users() {
                     }
                     className="pl-9 h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]"
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
               <div className="space-y-2.5">
-                <Label htmlFor="password" className="text-gray-700">Temporary Password</Label>
+                <Label htmlFor="create-password" className="text-gray-700">Temporary Password</Label>
                 <Input
-                  id="password"
+                  id="create-password"
                   type="password"
                   placeholder="••••••••"
                   value={formData.password}
@@ -292,17 +320,20 @@ export default function Users() {
                   }
                   className="h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]"
                   required
+                  disabled={isSubmitting}
+                  minLength={6}
                 />
               </div>
               <div className="space-y-2.5">
-                <Label htmlFor="role" className="text-gray-700">Access Level</Label>
+                <Label htmlFor="create-role" className="text-gray-700">Access Level</Label>
                 <Select
                   value={formData.role}
                   onValueChange={(value: any) =>
                     setFormData({ ...formData, role: value })
                   }
+                  disabled={isSubmitting}
                 >
-                  <SelectTrigger className="h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]">
+                  <SelectTrigger id="create-role" className="h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]">
                     <SelectValue placeholder="Select a role" />
                   </SelectTrigger>
                   <SelectContent>
@@ -319,11 +350,19 @@ export default function Users() {
                 variant="outline"
                 onClick={() => setIsCreateDialogOpen(false)}
                 className="w-full sm:w-auto h-11"
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" className="w-full sm:w-auto h-11 bg-[#8b9172] hover:bg-[#6a7051] text-white">
-                Send Invitation
+              <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto h-11 bg-[#8b9172] hover:bg-[#6a7051] text-white">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Inviting...
+                  </>
+                ) : (
+                  'Send Invitation'
+                )}
               </Button>
             </DialogFooter>
           </form>
@@ -331,7 +370,9 @@ export default function Users() {
       </Dialog>
 
       {/* Edit User Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      <Dialog open={isEditDialogOpen} onOpenChange={(open) => {
+        if (!isSubmitting) setIsEditDialogOpen(open);
+      }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="font-serif text-2xl">Modify Access Level</DialogTitle>
@@ -339,46 +380,73 @@ export default function Users() {
               Update the system permissions for this account.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-5 py-4">
-            <div className="space-y-2.5">
-              <Label className="text-gray-700">Email Address</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input value={formData.email} disabled className="pl-9 h-11 bg-gray-50 border-gray-200 text-gray-500" />
+          <form onSubmit={handleUpdateUser}>
+            <div className="space-y-5 py-4">
+              <div className="space-y-2.5">
+                <Label className="text-gray-700">Email Address</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Input value={formData.email} disabled className="pl-9 h-11 bg-gray-50 border-gray-200 text-gray-500" />
+                </div>
+                <p className="text-xs text-gray-500 font-light mt-1">Email addresses cannot be changed once set.</p>
               </div>
-              <p className="text-xs text-gray-500 font-light mt-1">Email addresses cannot be changed once set.</p>
+              <div className="space-y-2.5">
+                <Label htmlFor="edit-password" className="text-gray-700">New Password (Optional)</Label>
+                <Input
+                  id="edit-password"
+                  type="password"
+                  placeholder="Leave blank to keep current"
+                  value={formData.password}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
+                  className="h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]"
+                  disabled={isSubmitting}
+                  minLength={6}
+                />
+              </div>
+              <div className="space-y-2.5">
+                <Label htmlFor="edit-role" className="text-gray-700">Access Level</Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(value: any) =>
+                    setFormData({ ...formData, role: value })
+                  }
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="edit-role" className="h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">Standard Client</SelectItem>
+                    <SelectItem value="moderator">Event Manager</SelectItem>
+                    <SelectItem value="admin">Administrator</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-2.5">
-              <Label htmlFor="edit-role" className="text-gray-700">Access Level</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value: any) =>
-                  setFormData({ ...formData, role: value })
-                }
+            <DialogFooter className="pt-4 gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditDialogOpen(false)}
+                className="w-full sm:w-auto h-11"
+                disabled={isSubmitting}
               >
-                <SelectTrigger className="h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">Standard Client</SelectItem>
-                  <SelectItem value="moderator">Event Manager</SelectItem>
-                  <SelectItem value="admin">Administrator</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter className="pt-4 gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => setIsEditDialogOpen(false)}
-              className="w-full sm:w-auto h-11"
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => setIsEditDialogOpen(false)} className="w-full sm:w-auto h-11 bg-[#8b9172] hover:bg-[#6a7051] text-white">
-              Save Changes
-            </Button>
-          </DialogFooter>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto h-11 bg-[#8b9172] hover:bg-[#6a7051] text-white">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
