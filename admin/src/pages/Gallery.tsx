@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Upload, Image as ImageIcon, Trash2, FolderPlus, MapPin, Grid, Loader2 } from 'lucide-react';
+import { Upload, Image as ImageIcon, Trash2, FolderPlus, MapPin, Grid, Loader2, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,16 +34,18 @@ export interface GalleryImage {
 
 export default function Gallery() {
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [albumFilter, setAlbumFilter] = useState('all');
   
   // Modal States
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   
   const defaultForm = {
     title: '',
     description: '',
-    url: '',
     album: 'Main Arena',
   };
   const [formData, setFormData] = useState(defaultForm);
@@ -77,13 +79,63 @@ export default function Gallery() {
     }
   });
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        alert('File size exceeds 5MB limit');
+        return;
+      }
+      setSelectedFile(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+      
+      // Auto-fill title if empty
+      if (!formData.title) {
+        const titleWithoutExt = file.name.split('.').slice(0, -1).join('.');
+        setFormData(prev => ({ ...prev, title: titleWithoutExt }));
+      }
+    }
+  };
+
+  const resetUploadState = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    setFormData(defaultForm);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedFile) {
+      alert('Please select an image file to upload');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await api.post('/gallery', formData);
+      const submitData = new FormData();
+      submitData.append('image', selectedFile);
+      submitData.append('title', formData.title);
+      submitData.append('description', formData.description);
+      submitData.append('album', formData.album);
+
+      // We need to set the Content-Type to multipart/form-data for file uploads
+      await api.post('/gallery/upload', submitData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
       setIsUploadOpen(false);
-      setFormData(defaultForm);
+      resetUploadState();
       queryClient.invalidateQueries({ queryKey: ['gallery'] });
       queryClient.invalidateQueries({ queryKey: ['gallery', 'stats'] });
     } catch (error: any) {
@@ -113,7 +165,13 @@ export default function Gallery() {
           <p className="text-gray-600 mt-2 font-light">Manage venue photos, event showcases, and albums</p>
         </div>
         <div className="flex gap-3 w-full sm:w-auto">
-          <Button onClick={() => setIsUploadOpen(true)} className="w-full sm:w-auto bg-[#8b9172] hover:bg-[#6a7051] text-white">
+          <Button 
+            onClick={() => {
+              resetUploadState();
+              setIsUploadOpen(true);
+            }} 
+            className="w-full sm:w-auto bg-[#8b9172] hover:bg-[#6a7051] text-white"
+          >
             <Upload className="w-4 h-4 mr-2" />
             Upload Photos
           </Button>
@@ -159,9 +217,12 @@ export default function Gallery() {
               >
                 <div className="aspect-[4/3] overflow-hidden bg-muted/30">
                   <img
-                    src={image.url}
+                    src={image.url.startsWith('http') ? image.url : `${api.defaults.baseURL?.replace('/api', '')}${image.url}`}
                     alt={image.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://placehold.co/600x400?text=Image+Not+Found';
+                    }}
                   />
                 </div>
                 <div className="p-4 bg-white">
@@ -271,29 +332,71 @@ export default function Gallery() {
       </div>
 
       <Dialog open={isUploadOpen} onOpenChange={(open) => {
-        if (!isSubmitting) setIsUploadOpen(open);
+        if (!isSubmitting) {
+          setIsUploadOpen(open);
+          if (!open) resetUploadState();
+        }
       }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle className="font-serif text-2xl">Upload Photo</DialogTitle>
             <DialogDescription className="font-light">
-              Add a new photo to the venue gallery.
+              Add a new photo to the venue gallery from your computer.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUploadSubmit}>
             <div className="space-y-4 py-4">
+              
+              {/* File Upload Area */}
               <div className="space-y-2">
-                <Label htmlFor="url">Image URL</Label>
-                <Input
-                  id="url"
-                  type="url"
-                  placeholder="https://example.com/image.jpg"
-                  value={formData.url}
-                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                  required
-                  disabled={isSubmitting}
-                />
+                <Label>Image File</Label>
+                <div 
+                  className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+                    previewUrl ? 'border-[#8b9172]/50 bg-[#8b9172]/5' : 'border-gray-300 hover:border-[#8b9172] bg-gray-50 hover:bg-gray-50/80'
+                  }`}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleFileSelect}
+                    disabled={isSubmitting}
+                  />
+                  
+                  {previewUrl ? (
+                    <div className="relative w-full h-40">
+                      <img 
+                        src={previewUrl} 
+                        alt="Preview" 
+                        className="w-full h-full object-contain rounded-md"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute -top-2 -right-2 w-6 h-6 rounded-full"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          resetUploadState();
+                        }}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center space-y-2 text-gray-500">
+                      <div className="p-3 bg-white rounded-full shadow-sm">
+                        <Upload className="w-6 h-6 text-[#8b9172]" />
+                      </div>
+                      <div className="text-sm font-medium">Click to select an image</div>
+                      <div className="text-xs font-light">PNG, JPG, WEBP up to 5MB</div>
+                    </div>
+                  )}
+                </div>
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="title">Title / Caption</Label>
                 <Input
@@ -337,12 +440,19 @@ export default function Gallery() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsUploadOpen(false)}
+                onClick={() => {
+                  setIsUploadOpen(false);
+                  resetUploadState();
+                }}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting} className="bg-[#8b9172] hover:bg-[#6a7051] text-white">
+              <Button 
+                type="submit" 
+                disabled={isSubmitting || !selectedFile} 
+                className="bg-[#8b9172] hover:bg-[#6a7051] text-white"
+              >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import galleryController from '../controllers/gallery.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { upload } from '../middleware/upload.middleware';
 
 const router = Router();
 
@@ -8,6 +9,15 @@ const router = Router();
  * Gallery Routes
  * Public routes for viewing, authenticated routes for management
  */
+
+// POST /gallery/upload - Upload a new image file (Admin/Moderator only)
+router.post(
+  '/upload',
+  authenticate,
+  authorize('admin', 'moderator'),
+  upload.single('image'),
+  galleryController.uploadImage.bind(galleryController)
+);
 
 // GET /gallery/stats/summary - Get gallery statistics (Admin/Moderator only)
 router.get(

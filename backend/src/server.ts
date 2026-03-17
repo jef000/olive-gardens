@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
 import morgan from 'morgan';
+import path from 'path';
 import config from './config/env';
 import { testConnection, closePool } from './db/pool';
 import routes from './routes';
@@ -26,17 +27,8 @@ const app: Application = express();
  */
 app.use(
   helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-      },
-    },
-    hsts: {
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true,
-    },
+    contentSecurityPolicy: false, // Disabled to allow images to load from local IP
+    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow loading static resources from other origins
   })
 );
 
@@ -64,6 +56,11 @@ app.use(
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+/**
+ * Static Files serving (for local uploads)
+ */
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 /**
  * Logging Middleware

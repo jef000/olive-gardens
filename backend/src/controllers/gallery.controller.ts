@@ -128,6 +128,56 @@ export class GalleryController {
   }
 
   /**
+   * Upload new gallery image from multipart form data
+   * POST /api/gallery/upload
+   * Security: Admin and moderator only
+   */
+  async uploadImage(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      if (!req.file) {
+        sendError(res, 'No image file provided', 400);
+        return;
+      }
+
+      const { title, description, album, category, tags, is_featured, is_published } = req.body;
+      const userId = req.user?.userId;
+
+      // Construct URL paths based on the file saved by multer
+      // In a real production app, this would upload to S3/Cloudinary and get their URLs
+      const url = `/uploads/${req.file.filename}`;
+      const thumbnailUrl = url; // For MVP, using same image for thumbnail
+
+      const result = await query<GalleryImage>(
+        `INSERT INTO gallery_images (
+          title, description, url, thumbnail_url, album, category, tags,
+          file_size, file_type, width, height, is_featured, is_published, uploaded_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        RETURNING *`,
+        [
+          title || req.file.originalname,
+          description || '',
+          url,
+          thumbnailUrl,
+          album || 'Other',
+          category || 'General',
+          tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [],
+          req.file.size,
+          req.file.mimetype,
+          0, // Would need image processing library to get actual dimensions
+          0,
+          is_featured === 'true' || is_featured === true,
+          is_published !== undefined ? (is_published === 'true' || is_published === true) : true,
+          userId,
+        ]
+      );
+
+      sendSuccess(res, { image: result.rows[0] }, 'Image uploaded successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Create new gallery image
    * POST /api/gallery
    * Security: Admin and moderator only
