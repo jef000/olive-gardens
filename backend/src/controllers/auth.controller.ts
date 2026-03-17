@@ -148,7 +148,7 @@ export class AuthController {
         return;
       }
 
-      sendSuccess(res, result.rows[0]);
+      sendSuccess(res, { user: result.rows[0] });
     } catch (error) {
       next(error);
     }

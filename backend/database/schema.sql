@@ -13,11 +13,11 @@ CREATE TABLE users (
   email VARCHAR(255) UNIQUE NOT NULL,
   password TEXT NOT NULL,
   role VARCHAR(50) DEFAULT 'user' CHECK (role IN ('user', 'admin', 'moderator')),
-  
+
   -- Password reset fields
   reset_token TEXT,
   reset_token_expiry TIMESTAMP,
-  
+
   -- Timestamps
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -38,6 +38,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger to automatically update updated_at
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at
   BEFORE UPDATE ON users
   FOR EACH ROW
@@ -45,12 +46,9 @@ CREATE TRIGGER update_users_updated_at
 
 -- Insert a test admin user (password: Admin123!)
 -- Password hash for 'Admin123!' with bcrypt rounds=12
-INSERT INTO users (email, password, role) 
+INSERT INTO users (email, password, role)
 VALUES (
   'admin@olivegarden.com',
   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYIeWIgAnKW',
   'admin'
 ) ON CONFLICT (email) DO NOTHING;
-
--- Display table structure
-\d users
