@@ -4,6 +4,7 @@ import userRoutes from './user.routes';
 import bookingRoutes from './booking.routes';
 import galleryRoutes from './gallery.routes';
 import analyticsRoutes from './analytics.routes';
+import auditRoutes from './audit.routes';
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.use('/users', userRoutes);
 router.use('/bookings', bookingRoutes);
 router.use('/gallery', galleryRoutes);
 router.use('/analytics', analyticsRoutes);
+router.use('/audit', auditRoutes);
 
 // Health check endpoint
 router.get('/health', (_req, res) => {

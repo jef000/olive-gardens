@@ -8,6 +8,7 @@ import { testConnection, closePool } from './db/pool';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
+import { auditContextMiddleware, auditLogMiddleware } from './middleware/audit.middleware';
 
 /**
  * Express Application Setup
@@ -81,6 +82,13 @@ if (config.isDevelopment) {
  * Applied globally to all routes
  */
 app.use(apiLimiter);
+
+/**
+ * Audit Trail Middleware
+ * Tracks all API requests for audit logging
+ */
+app.use(auditContextMiddleware);
+app.use(auditLogMiddleware);
 
 /**
  * API Routes
