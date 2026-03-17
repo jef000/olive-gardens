@@ -12,6 +12,14 @@ const router = Router();
 // GET /users/me - Get current user profile
 router.get('/me', authenticate, userController.getProfile.bind(userController));
 
+// GET /users/stats/summary - Get user statistics (Admin only)
+router.get(
+  '/stats/summary',
+  authenticate,
+  authorize('admin'),
+  userController.getUserStats.bind(userController)
+);
+
 // GET /users - Get all users (Admin only)
 router.get(
   '/',
@@ -20,12 +28,36 @@ router.get(
   userController.getAllUsers.bind(userController)
 );
 
+// POST /users - Create new user (Admin only)
+router.post(
+  '/',
+  authenticate,
+  authorize('admin'),
+  userController.createUser.bind(userController)
+);
+
 // GET /users/:id - Get user by ID (Admin only)
 router.get(
   '/:id',
   authenticate,
   authorize('admin'),
   userController.getUserById.bind(userController)
+);
+
+// PUT /users/:id - Update user (Admin only)
+router.put(
+  '/:id',
+  authenticate,
+  authorize('admin'),
+  userController.updateUser.bind(userController)
+);
+
+// DELETE /users/:id - Delete user (Admin only)
+router.delete(
+  '/:id',
+  authenticate,
+  authorize('admin'),
+  userController.deleteUser.bind(userController)
 );
 
 export default router;
