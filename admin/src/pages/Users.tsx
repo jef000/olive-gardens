@@ -46,11 +46,16 @@ export default function Users() {
     queryKey: ['users'],
     queryFn: async () => {
       try {
-        const response = await api.get<ApiResponse<User[]>>('/users');
-        return response.data.data;
+        const response = await api.get<ApiResponse<{ users: User[] }>>('/users');
+        const payload = response.data.data;
+        if (payload && Array.isArray(payload.users)) {
+          return payload.users;
+        }
+
+        console.warn('Unexpected payload shape for /users, falling back to sanitized array', payload);
+        return [];
       } catch (error) {
-        console.error("Failed to fetch users:", error);
-        // Fallback to dummy data for preview purposes if API fails
+        console.error('Failed to fetch users:', error);
         return [
           { id: '1', email: 'admin@olivegarden.com', role: 'admin', created_at: new Date().toISOString() },
           { id: '2', email: 'sarah.njiru@olivegarden.com', role: 'moderator', created_at: new Date(new Date().setDate(new Date().getDate() - 5)).toISOString() },
@@ -61,7 +66,9 @@ export default function Users() {
     },
   });
 
-  const filteredUsers = usersData?.filter((user) =>
+  const normalizedUsers = Array.isArray(usersData) ? usersData : [];
+
+  const filteredUsers = normalizedUsers.filter((user) =>
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -121,10 +128,10 @@ export default function Users() {
   };
 
   const stats = [
-    { label: 'Total Accounts', value: usersData?.length || 0, color: 'text-gray-900' },
-    { label: 'Administrators', value: usersData?.filter(u => u.role === 'admin').length || 0, color: 'text-red-700' },
-    { label: 'Event Managers', value: usersData?.filter(u => u.role === 'moderator').length || 0, color: 'text-[#8b9172]' },
-    { label: 'Standard Clients', value: usersData?.filter(u => u.role === 'user').length || 0, color: 'text-gray-600' },
+    { label: 'Total Accounts', value: normalizedUsers.length, color: 'text-gray-900' },
+    { label: 'Administrators', value: normalizedUsers.filter(u => u.role === 'admin').length, color: 'text-red-700' },
+    { label: 'Event Managers', value: normalizedUsers.filter(u => u.role === 'moderator').length, color: 'text-[#8b9172]' },
+    { label: 'Standard Clients', value: normalizedUsers.filter(u => u.role === 'user').length, color: 'text-gray-600' },
   ];
 
   return (
