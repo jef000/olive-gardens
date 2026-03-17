@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Upload, Image as ImageIcon, Trash2, FolderPlus, MapPin, Grid } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '@/lib/api';
+import { Upload, Image as ImageIcon, Trash2, FolderPlus, MapPin, Grid, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,61 +11,99 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import type { ApiResponse } from '@/types';
 
-interface GalleryImage {
+export interface GalleryImage {
   id: string;
+  title: string;
+  description?: string;
   url: string;
   album: string;
-  caption: string;
+  file_size?: number;
 }
 
-const mockImages: GalleryImage[] = [
-  {
-    id: '1',
-    url: 'https://images.unsplash.com/photo-1519167758481-83f29da1a3a0?w=800',
-    album: 'Main Arena',
-    caption: 'Wedding Setup under the Canopy',
-  },
-  {
-    id: '2',
-    url: 'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?w=800',
-    album: 'Garden Hall',
-    caption: 'Indoor Workshop Setup',
-  },
-  {
-    id: '3',
-    url: 'https://images.unsplash.com/photo-1478146896981-b80fe463b330?w=800',
-    album: 'Corporate Events',
-    caption: 'Evening Gala Lighting',
-  },
-  {
-    id: '4',
-    url: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=800',
-    album: 'Main Arena',
-    caption: 'Open Air Reception',
-  },
-  {
-    id: '5',
-    url: 'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?w=800',
-    album: 'Corporate Events',
-    caption: 'Conference Seating',
-  },
-  {
-    id: '6',
-    url: 'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=800',
-    album: 'Therapy Room',
-    caption: 'Private Counselling Space',
-  },
-];
-
 export default function Gallery() {
+  const queryClient = useQueryClient();
   const [albumFilter, setAlbumFilter] = useState('all');
+  
+  // Modal States
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const defaultForm = {
+    title: '',
+    description: '',
+    url: '',
+    album: 'Main Arena',
+  };
+  const [formData, setFormData] = useState(defaultForm);
 
-  const filteredImages = mockImages.filter(
+  const { data: galleryData, isLoading: isLoadingGallery } = useQuery({
+    queryKey: ['gallery'],
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<{ images: GalleryImage[]; total: number }>>('/gallery');
+      return response.data.data;
+    },
+  });
+
+  const { data: statsData, isLoading: isLoadingStats } = useQuery({
+    queryKey: ['gallery', 'stats'],
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<any>>('/gallery/stats/summary');
+      return response.data.data;
+    },
+  });
+
+  const deleteImageMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/gallery/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery', 'stats'] });
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.message || 'Failed to delete image');
+    }
+  });
+
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await api.post('/gallery', formData);
+      setIsUploadOpen(false);
+      setFormData(defaultForm);
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery', 'stats'] });
+    } catch (error: any) {
+      alert(error.response?.data?.message || 'Failed to upload image');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const normalizedImages = Array.isArray(galleryData?.images) ? galleryData.images : [];
+
+  const filteredImages = normalizedImages.filter(
     (img) => albumFilter === 'all' || img.album === albumFilter
   );
 
-  const albums = ['Main Arena', 'Garden Hall', 'Therapy Room', 'Corporate Events', 'Weddings'];
+  const albums = ['Main Arena', 'Garden Hall', 'Therapy Room', 'Events', 'Facilities', 'Other'];
+  const formatBytes = (bytes: number) => {
+    if (!bytes) return '0 MB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
 
   return (
     <div className="space-y-6">
@@ -73,11 +113,7 @@ export default function Gallery() {
           <p className="text-gray-600 mt-2 font-light">Manage venue photos, event showcases, and albums</p>
         </div>
         <div className="flex gap-3 w-full sm:w-auto">
-          <Button variant="outline" className="w-full sm:w-auto border-border/50 text-[#8b9172] hover:bg-[#8b9172]/5">
-            <FolderPlus className="w-4 h-4 mr-2" />
-            New Album
-          </Button>
-          <Button className="w-full sm:w-auto bg-[#8b9172] hover:bg-[#6a7051] text-white">
+          <Button onClick={() => setIsUploadOpen(true)} className="w-full sm:w-auto bg-[#8b9172] hover:bg-[#6a7051] text-white">
             <Upload className="w-4 h-4 mr-2" />
             Upload Photos
           </Button>
@@ -108,6 +144,13 @@ export default function Gallery() {
           </div>
         </CardHeader>
         <CardContent className="pt-6">
+          {isLoadingGallery ? (
+            <div className="text-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#8b9172] mb-4" />
+              <p className="text-gray-500 font-light">Loading gallery...</p>
+            </div>
+          ) : (
+          <>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredImages.map((image) => (
               <div
@@ -117,21 +160,27 @@ export default function Gallery() {
                 <div className="aspect-[4/3] overflow-hidden bg-muted/30">
                   <img
                     src={image.url}
-                    alt={image.caption}
+                    alt={image.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                 </div>
                 <div className="p-4 bg-white">
-                  <p className="font-medium text-sm text-gray-900 truncate">{image.caption}</p>
+                  <p className="font-medium text-sm text-gray-900 truncate">{image.title}</p>
                   <p className="text-xs text-[#8b9172] font-medium mt-1 uppercase tracking-wider">{image.album}</p>
                 </div>
                 
                 {/* Overlay actions */}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3">
-                  <Button variant="secondary" size="sm" className="bg-white hover:bg-gray-100 text-gray-900 h-9">
-                    Edit
-                  </Button>
-                  <Button variant="destructive" size="sm" className="h-9 px-3">
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    className="h-9 px-3"
+                    onClick={() => {
+                      if (confirm('Delete this image permanently?')) {
+                        deleteImageMutation.mutate(image.id);
+                      }
+                    }}
+                  >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -148,6 +197,8 @@ export default function Gallery() {
               <p className="text-gray-500 font-light">Try selecting a different album or upload new photos.</p>
             </div>
           )}
+          </>
+          )}
         </CardContent>
       </Card>
 
@@ -161,16 +212,24 @@ export default function Gallery() {
               <div>
                 <div className="flex justify-between text-sm mb-3">
                   <span className="text-gray-600 font-medium">Used Space</span>
-                  <span className="font-medium text-gray-900">2.4 GB <span className="text-gray-400 font-normal">/ 10 GB</span></span>
+                  <span className="font-medium text-gray-900">
+                    {isLoadingStats ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : formatBytes(statsData?.total_storage_bytes || 0)} 
+                    <span className="text-gray-400 font-normal"> / 10 GB</span>
+                  </span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-[#8b9172] h-full rounded-full transition-all duration-1000" style={{ width: '24%' }}></div>
+                  <div 
+                    className="bg-[#8b9172] h-full rounded-full transition-all duration-1000" 
+                    style={{ width: `${Math.min(100, ((statsData?.total_storage_bytes || 0) / (10 * 1024 * 1024 * 1024)) * 100)}%` }}
+                  ></div>
                 </div>
               </div>
               <div className="pt-4 border-t border-border/50 flex justify-between items-center">
                 <div>
                   <p className="text-sm text-gray-500 font-light">Total Media Files</p>
-                  <p className="text-2xl font-serif font-medium mt-1">{mockImages.length}</p>
+                  <p className="text-2xl font-serif font-medium mt-1">
+                    {isLoadingStats ? <Loader2 className="w-5 h-5 animate-spin" /> : statsData?.total_images || 0}
+                  </p>
                 </div>
                 <Button variant="outline" className="text-xs h-8 border-border/50">Upgrade Plan</Button>
               </div>
@@ -185,7 +244,9 @@ export default function Gallery() {
           <CardContent className="pt-6">
             <div className="space-y-3">
               {albums.map((album) => {
-                const count = mockImages.filter((img) => img.album === album).length;
+                // Fallback to manual count if statsData missing
+                const statsAlbum = statsData?.album_breakdown?.find((a: any) => a.album === album);
+                const count = statsAlbum ? parseInt(statsAlbum.count) : normalizedImages.filter((img) => img.album === album).length;
                 return (
                   <div
                     key={album}
@@ -208,6 +269,93 @@ export default function Gallery() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={isUploadOpen} onOpenChange={(open) => {
+        if (!isSubmitting) setIsUploadOpen(open);
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">Upload Photo</DialogTitle>
+            <DialogDescription className="font-light">
+              Add a new photo to the venue gallery.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUploadSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="url">Image URL</Label>
+                <Input
+                  id="url"
+                  type="url"
+                  placeholder="https://example.com/image.jpg"
+                  value={formData.url}
+                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="title">Title / Caption</Label>
+                <Input
+                  id="title"
+                  placeholder="Beautiful wedding setup..."
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Description (Optional)</Label>
+                <Input
+                  id="description"
+                  placeholder="Additional details..."
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="album">Album</Label>
+                <Select
+                  value={formData.album}
+                  onValueChange={(val) => setFormData({ ...formData, album: val })}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="album">
+                    <SelectValue placeholder="Select an album" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {albums.map(a => (
+                      <SelectItem key={a} value={a}>{a}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter className="pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsUploadOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting} className="bg-[#8b9172] hover:bg-[#6a7051] text-white">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  'Upload Image'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
