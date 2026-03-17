@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
@@ -17,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Calendar, Filter, Search, MoreHorizontal, Check, X, Clock, Mail, Phone } from 'lucide-react';
+import { Calendar, Filter, Search, MoreHorizontal, Check, X, Clock, Mail, Phone, Loader2, Plus } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,113 +28,174 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
+import type { ApiResponse } from '@/types';
 
-interface Booking {
+export interface Booking {
   id: string;
-  eventName: string;
-  venue: string;
-  eventType: string;
-  date: string;
-  guests: number;
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
-  customer: {
-    name: string;
-    email: string;
-    phone: string;
-  };
-  amount: number;
+  booking_reference: string;
+  client_name: string;
+  client_email: string;
+  client_phone?: string;
+  event_name: string;
+  event_type: 'Wedding' | 'Corporate' | 'Workshop' | 'Session' | 'Conference' | 'Party' | 'Other';
+  venue: 'Main Arena' | 'Garden Hall' | 'Therapy Room' | 'Conference Room';
+  event_date: string;
+  start_time?: string;
+  end_time?: string;
+  total_amount: number;
+  deposit_amount: number;
+  balance_amount: number;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  payment_status: 'unpaid' | 'partial' | 'paid' | 'refunded';
+  guest_count?: number;
+  special_requests?: string;
+  notes?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
-const mockBookings: Booking[] = [
-  {
-    id: 'BK-1001',
-    eventName: 'Njiru Wedding Reception',
-    venue: 'Main Arena',
-    eventType: 'Wedding',
-    date: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString(),
-    guests: 350,
-    status: 'confirmed',
-    customer: {
-      name: 'Sarah Njiru',
-      email: 'sarah.n@example.com',
-      phone: '+254 712 345 678'
-    },
-    amount: 185000,
-  },
-  {
-    id: 'BK-1002',
-    eventName: 'Tech Innovators Summit',
-    venue: 'Main Arena',
-    eventType: 'Corporate',
-    date: new Date(new Date().setDate(new Date().getDate() + 12)).toISOString(),
-    guests: 450,
-    status: 'pending',
-    customer: {
-      name: 'James Kamau',
-      email: 'j.kamau@techcorp.co.ke',
-      phone: '+254 722 111 222'
-    },
-    amount: 250000,
-  },
-  {
-    id: 'BK-1003',
-    eventName: 'Leadership Retreat',
-    venue: 'Garden Hall',
-    eventType: 'Workshop',
-    date: new Date(new Date().setDate(new Date().getDate() + 2)).toISOString(),
-    guests: 45,
-    status: 'confirmed',
-    customer: {
-      name: 'Grace Wambui',
-      email: 'grace@leadership.org',
-      phone: '+254 733 444 555'
-    },
-    amount: 65000,
-  },
-  {
-    id: 'BK-1004',
-    eventName: 'Individual Counseling',
-    venue: 'Therapy Room',
-    eventType: 'Session',
-    date: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString(),
-    guests: 2,
-    status: 'completed',
-    customer: {
-      name: 'Private Client',
-      email: 'client@private.com',
-      phone: '+254 700 123 456'
-    },
-    amount: 5000,
-  },
-  {
-    id: 'BK-1005',
-    eventName: 'Odinga Family Reunion',
-    venue: 'Garden Hall',
-    eventType: 'Social',
-    date: new Date(new Date().setDate(new Date().getDate() + 20)).toISOString(),
-    guests: 100,
-    status: 'cancelled',
-    customer: {
-      name: 'Peter Odinga',
-      email: 'p.odinga@example.com',
-      phone: '+254 799 888 777'
-    },
-    amount: 45000,
-  },
-];
+interface BookingStats {
+  total_bookings: number;
+  total_revenue: number;
+  pending_bookings: number;
+  confirmed_bookings: number;
+  status_breakdown: { status: string; count: string }[];
+  venue_breakdown: { venue: string; count: string }[];
+  event_type_breakdown: { event_type: string; count: string }[];
+  payment_status_breakdown: { payment_status: string; count: string }[];
+}
 
 export default function Bookings() {
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [venueFilter, setVenueFilter] = useState('all');
 
-  const filteredBookings = mockBookings.filter((booking) => {
+  // Modal States
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const defaultForm = {
+    client_name: '', client_email: '', client_phone: '',
+    event_name: '', event_type: 'Wedding', venue: 'Main Arena',
+    event_date: '', guest_count: 0, total_amount: 0, deposit_amount: 0
+  };
+  const [formData, setFormData] = useState<any>(defaultForm);
+
+  const handleCreateClick = () => {
+    setEditingId(null);
+    setFormData(defaultForm);
+    setIsDialogOpen(true);
+  };
+
+  const handleEditClick = (booking: Booking) => {
+    setEditingId(booking.id);
+    setFormData({
+      client_name: booking.client_name,
+      client_email: booking.client_email,
+      client_phone: booking.client_phone || '',
+      event_name: booking.event_name,
+      event_type: booking.event_type,
+      venue: booking.venue,
+      event_date: booking.event_date ? format(new Date(booking.event_date), 'yyyy-MM-dd') : '',
+      guest_count: booking.guest_count || 0,
+      total_amount: booking.total_amount || 0,
+      deposit_amount: booking.deposit_amount || 0,
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        ...formData,
+        guest_count: Number(formData.guest_count),
+        total_amount: Number(formData.total_amount),
+        deposit_amount: Number(formData.deposit_amount),
+      };
+
+      if (editingId) {
+        await api.put(`/bookings/${editingId}`, payload);
+      } else {
+        await api.post('/bookings', payload);
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings', 'stats'] });
+      setIsDialogOpen(false);
+      setEditingId(null);
+      setFormData(defaultForm);
+    } catch (error: any) {
+      alert(error.response?.data?.message || `Failed to ${editingId ? 'update' : 'create'} booking`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const { data: bookingsData, isLoading: isLoadingBookings } = useQuery({
+    queryKey: ['bookings'],
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<{ bookings: Booking[]; total: number }>>('/bookings');
+      return response.data.data;
+    },
+  });
+
+  const { data: statsData, isLoading: isLoadingStats } = useQuery({
+    queryKey: ['bookings', 'stats'],
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<BookingStats>>('/bookings/stats/summary');
+      return response.data.data;
+    },
+  });
+
+  const updateBookingMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      await api.put(`/bookings/${id}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings', 'stats'] });
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.message || 'Failed to update booking status');
+    }
+  });
+
+  const deleteBookingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/bookings/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings', 'stats'] });
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.message || 'Failed to delete booking');
+    }
+  });
+
+  const normalizedBookings = Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [];
+
+  const filteredBookings = normalizedBookings.filter((booking) => {
     const matchesSearch =
-      booking.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.customer.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.eventName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.id.toLowerCase().includes(searchTerm.toLowerCase());
+      booking.client_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      booking.client_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      booking.event_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      booking.booking_reference.toLowerCase().includes(searchTerm.toLowerCase());
       
     const matchesStatus = statusFilter === 'all' || booking.status === statusFilter;
     const matchesVenue = venueFilter === 'all' || booking.venue.toLowerCase().includes(venueFilter.toLowerCase());
@@ -176,20 +239,20 @@ export default function Bookings() {
   };
 
   const stats = [
-    { label: 'Total Reservations', value: mockBookings.length, color: 'text-gray-900' },
+    { label: 'Total Reservations', value: statsData?.total_bookings || 0, color: 'text-gray-900' },
     {
       label: 'Pending Approval',
-      value: mockBookings.filter((b) => b.status === 'pending').length,
+      value: statsData?.pending_bookings || 0,
       color: 'text-amber-600',
     },
     {
       label: 'Confirmed Events',
-      value: mockBookings.filter((b) => b.status === 'confirmed').length,
+      value: statsData?.confirmed_bookings || 0,
       color: 'text-[#8b9172]',
     },
     {
       label: 'Total Value',
-      value: `KES ${(mockBookings.reduce((sum, b) => sum + b.amount, 0) / 1000).toFixed(1)}K`,
+      value: `KES ${((statsData?.total_revenue || 0) / 1000).toFixed(1)}K`,
       color: 'text-gray-900',
     },
   ];
@@ -205,8 +268,9 @@ export default function Bookings() {
           <h1 className="text-3xl font-serif text-gray-900">Reservations</h1>
           <p className="text-gray-600 mt-2 font-light">Manage venue bookings and client requests</p>
         </div>
-        <Button className="bg-[#8b9172] hover:bg-[#6a7051] text-white">
-          + New Reservation
+        <Button onClick={handleCreateClick} className="bg-[#8b9172] hover:bg-[#6a7051] text-white">
+          <Plus className="w-4 h-4 mr-2" />
+          New Reservation
         </Button>
       </div>
 
@@ -214,7 +278,9 @@ export default function Bookings() {
         {stats.map((stat, index) => (
           <Card key={index} className="border-border/50 shadow-sm">
             <CardContent className="pt-6">
-              <div className={`text-3xl font-bold font-serif mb-1 ${stat.color}`}>{stat.value}</div>
+              <div className={`text-3xl font-bold font-serif mb-1 ${stat.color}`}>{
+                isLoadingStats ? <Loader2 className="w-6 h-6 animate-spin text-gray-400" /> : stat.value
+              }</div>
               <div className="text-sm text-gray-500 font-medium uppercase tracking-wider">{stat.label}</div>
             </CardContent>
           </Card>
@@ -264,6 +330,12 @@ export default function Bookings() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {isLoadingBookings ? (
+            <div className="text-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#8b9172] mb-4" />
+              <p className="text-gray-500 font-light">Loading reservations...</p>
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader className="bg-gray-50/50">
@@ -288,33 +360,33 @@ export default function Bookings() {
                   filteredBookings.map((booking) => (
                     <TableRow key={booking.id} className="hover:bg-gray-50/30 cursor-default">
                       <TableCell className="font-medium text-xs text-gray-500 pl-6">
-                        {booking.id}
+                        {booking.booking_reference}
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-gray-900">{booking.eventName}</div>
+                        <div className="font-medium text-gray-900">{booking.event_name}</div>
                         <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                           <span className="inline-block w-2 h-2 rounded-full bg-gray-300" />
-                          {booking.eventType} • {booking.guests} guests
+                          {booking.event_type} • {booking.guest_count || 0} guests
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-gray-900">{booking.customer.name}</div>
+                        <div className="font-medium text-gray-900">{booking.client_name}</div>
                         <div className="text-xs text-gray-500 mt-1 flex flex-col gap-0.5">
-                          <span className="flex items-center gap-1"><Mail size={10} /> {booking.customer.email}</span>
-                          <span className="flex items-center gap-1"><Phone size={10} /> {booking.customer.phone}</span>
+                          <span className="flex items-center gap-1"><Mail size={10} /> {booking.client_email}</span>
+                          {booking.client_phone && <span className="flex items-center gap-1"><Phone size={10} /> {booking.client_phone}</span>}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="font-medium text-gray-900 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-[#8b9172]" />
-                          {format(new Date(booking.date), 'MMM dd, yyyy')}
+                          {format(new Date(booking.event_date), 'MMM dd, yyyy')}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           {booking.venue}
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-medium text-gray-900">
-                        {formatCurrency(booking.amount)}
+                        {formatCurrency(booking.total_amount)}
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex justify-center">
@@ -331,14 +403,41 @@ export default function Bookings() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem>View details</DropdownMenuItem>
-                            <DropdownMenuItem>Edit reservation</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleEditClick(booking)}>Edit reservation</DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                if (confirm('Are you sure you want to delete this booking?')) {
+                                  deleteBookingMutation.mutate(booking.id);
+                                }
+                              }}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              Delete reservation
+                            </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {booking.status === 'pending' && (
-                              <DropdownMenuItem className="text-[#8b9172]">Confirm booking</DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="text-[#8b9172]"
+                                onClick={() => updateBookingMutation.mutate({ id: booking.id, status: 'confirmed' })}
+                              >
+                                Confirm booking
+                              </DropdownMenuItem>
+                            )}
+                            {booking.status === 'confirmed' && (
+                              <DropdownMenuItem 
+                                className="text-emerald-600"
+                                onClick={() => updateBookingMutation.mutate({ id: booking.id, status: 'completed' })}
+                              >
+                                Mark completed
+                              </DropdownMenuItem>
                             )}
                             {booking.status !== 'cancelled' && (
-                              <DropdownMenuItem className="text-red-600">Cancel booking</DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="text-red-600"
+                                onClick={() => updateBookingMutation.mutate({ id: booking.id, status: 'cancelled' })}
+                              >
+                                Cancel booking
+                              </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -349,8 +448,172 @@ export default function Bookings() {
               </TableBody>
             </Table>
           </div>
+          )}
         </CardContent>
       </Card>
+
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        if (!isSubmitting) setIsDialogOpen(open);
+      }}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">{editingId ? 'Edit Reservation' : 'New Reservation'}</DialogTitle>
+            <DialogDescription className="font-light">
+              {editingId ? 'Update the details for this reservation.' : 'Enter the details to create a new reservation.'}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="client_name">Client Name</Label>
+                <Input
+                  id="client_name"
+                  value={formData.client_name}
+                  onChange={(e) => setFormData({ ...formData, client_name: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client_email">Client Email</Label>
+                <Input
+                  id="client_email"
+                  type="email"
+                  value={formData.client_email}
+                  onChange={(e) => setFormData({ ...formData, client_email: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client_phone">Client Phone</Label>
+                <Input
+                  id="client_phone"
+                  value={formData.client_phone}
+                  onChange={(e) => setFormData({ ...formData, client_phone: e.target.value })}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="event_name">Event Name</Label>
+                <Input
+                  id="event_name"
+                  value={formData.event_name}
+                  onChange={(e) => setFormData({ ...formData, event_name: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="event_type">Event Type</Label>
+                <Select
+                  value={formData.event_type}
+                  onValueChange={(val) => setFormData({ ...formData, event_type: val })}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="event_type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Wedding">Wedding</SelectItem>
+                    <SelectItem value="Corporate">Corporate</SelectItem>
+                    <SelectItem value="Workshop">Workshop</SelectItem>
+                    <SelectItem value="Session">Session</SelectItem>
+                    <SelectItem value="Conference">Conference</SelectItem>
+                    <SelectItem value="Party">Party</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="venue">Venue</Label>
+                <Select
+                  value={formData.venue}
+                  onValueChange={(val) => setFormData({ ...formData, venue: val })}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="venue">
+                    <SelectValue placeholder="Select venue" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Main Arena">Main Arena</SelectItem>
+                    <SelectItem value="Garden Hall">Garden Hall</SelectItem>
+                    <SelectItem value="Therapy Room">Therapy Room</SelectItem>
+                    <SelectItem value="Conference Room">Conference Room</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="event_date">Event Date</Label>
+                <Input
+                  id="event_date"
+                  type="date"
+                  value={formData.event_date}
+                  onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="guest_count">Guest Count</Label>
+                <Input
+                  id="guest_count"
+                  type="number"
+                  min="1"
+                  value={formData.guest_count}
+                  onChange={(e) => setFormData({ ...formData, guest_count: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="total_amount">Total Amount (KES)</Label>
+                <Input
+                  id="total_amount"
+                  type="number"
+                  min="0"
+                  value={formData.total_amount}
+                  onChange={(e) => setFormData({ ...formData, total_amount: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deposit_amount">Deposit Amount (KES)</Label>
+                <Input
+                  id="deposit_amount"
+                  type="number"
+                  min="0"
+                  value={formData.deposit_amount}
+                  onChange={(e) => setFormData({ ...formData, deposit_amount: e.target.value })}
+                  required
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+            <DialogFooter className="pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsDialogOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting} className="bg-[#8b9172] hover:bg-[#6a7051] text-white">
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Reservation'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
