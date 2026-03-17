@@ -35,7 +35,16 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || config.cors.allowedOrigins.includes(origin)) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Allow all origins in development
+      if (config.isDevelopment) {
+        return callback(null, true);
+      }
+      
+      // Check against allowed origins in production
+      if (config.cors.allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));

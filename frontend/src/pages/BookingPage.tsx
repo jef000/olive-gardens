@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
-import { Check, ChevronRight, ArrowLeft } from "lucide-react";
+import { Check, ChevronRight, ArrowLeft, Loader2 } from "lucide-react";
+import api from "@/lib/api";
 
 const spaces = [
   { id: "main-arena", name: "Main Arena", capacity: 500 },
@@ -20,6 +21,9 @@ const BookingPage = () => {
   const [step, setStep] = useState(hasPreselection ? 2 : 1);
   const [selectedSpace, setSelectedSpace] = useState(prefilledSpace || spaces[0].id);
   const [selectedDate, setSelectedDate] = useState(prefilledDate);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -28,9 +32,36 @@ const BookingPage = () => {
     notes: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep(3);
+    setIsSubmitting(true);
+    setError(null);
+    
+    try {
+      const spaceObj = spaces.find(s => s.id === selectedSpace);
+      
+      const payload = {
+        client_name: formData.name,
+        client_email: formData.email,
+        client_phone: formData.phone,
+        event_name: `${spaceObj?.name} Booking - ${formData.name}`,
+        event_type: "Other",
+        venue: spaceObj?.name,
+        event_date: selectedDate,
+        guest_count: parseInt(formData.headcount) || 0,
+        total_amount: 0, // This would be calculated or set by admin later
+        deposit_amount: 0,
+        special_requests: formData.notes
+      };
+
+      await api.post('/bookings/public', payload);
+      setStep(3);
+    } catch (err: any) {
+      console.error('Booking submission error:', err);
+      setError(err.response?.data?.message || 'Failed to submit booking request. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const fadeIn = {
@@ -151,6 +182,11 @@ const BookingPage = () => {
                 </div>
 
                 <div className="space-y-8">
+                  {error && (
+                    <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm mb-6 border border-red-200">
+                      {error}
+                    </div>
+                  )}
                   <div className="grid sm:grid-cols-2 gap-8">
                     <div className="space-y-2">
                       <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Full Name</label>
@@ -225,9 +261,19 @@ const BookingPage = () => {
                   </button>
                   <button 
                     type="submit" 
-                    className="w-full sm:w-auto px-10 py-4 bg-black text-white rounded-full font-medium hover:bg-primary transition-colors duration-300 flex items-center justify-center gap-2"
+                    disabled={isSubmitting}
+                    className="w-full sm:w-auto px-10 py-4 bg-black text-white rounded-full font-medium hover:bg-primary transition-colors duration-300 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                   >
-                    Submit Booking Request <ChevronRight size={16} />
+                    {isSubmitting ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Submitting...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        Submit Booking Request <ChevronRight size={16} />
+                      </span>
+                    )}
                   </button>
                 </div>
               </motion.form>

@@ -4,6 +4,7 @@ import { AuthProvider } from './lib/auth';
 import ProtectedRoute from './components/ProtectedRoute';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
+import Toaster from './components/ui/toaster';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
@@ -33,6 +34,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
+          <Toaster />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route

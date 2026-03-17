@@ -5,7 +5,17 @@ import { authenticate, authorize } from '../middleware/auth.middleware';
 const router = Router();
 
 /**
- * Booking Routes
+ * Public Routes
+ */
+
+// POST /bookings/public - Create new booking from frontend
+router.post(
+  '/public',
+  bookingController.createBooking.bind(bookingController)
+);
+
+/**
+ * Admin Routes
  * All routes require authentication and admin/moderator access
  */
 

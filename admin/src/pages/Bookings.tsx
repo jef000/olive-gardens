@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import bookingService from '@/services/booking.service';
+import type { Booking, CreateBookingDTO, BookingStats } from '@/types/booking';
 import {
   Table,
   TableBody,
@@ -38,45 +40,9 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
-import type { ApiResponse } from '@/types';
-
-export interface Booking {
-  id: string;
-  booking_reference: string;
-  client_name: string;
-  client_email: string;
-  client_phone?: string;
-  event_name: string;
-  event_type: 'Wedding' | 'Corporate' | 'Workshop' | 'Session' | 'Conference' | 'Party' | 'Other';
-  venue: 'Main Arena' | 'Garden Hall' | 'Therapy Room' | 'Conference Room';
-  event_date: string;
-  start_time?: string;
-  end_time?: string;
-  total_amount: number;
-  deposit_amount: number;
-  balance_amount: number;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-  payment_status: 'unpaid' | 'partial' | 'paid' | 'refunded';
-  guest_count?: number;
-  special_requests?: string;
-  notes?: string;
-  created_by?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface BookingStats {
-  total_bookings: number;
-  total_revenue: number;
-  pending_bookings: number;
-  confirmed_bookings: number;
-  status_breakdown: { status: string; count: string }[];
-  venue_breakdown: { venue: string; count: string }[];
-  event_type_breakdown: { event_type: string; count: string }[];
-  payment_status_breakdown: { payment_status: string; count: string }[];
-}
 
 export default function Bookings() {
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -87,12 +53,25 @@ export default function Bookings() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const defaultForm = {
+  interface FormData {
+    client_name: string;
+    client_email: string;
+    client_phone: string;
+    event_name: string;
+    event_type: string;
+    venue: string;
+    event_date: string;
+    guest_count: number | string;
+    total_amount: number | string;
+    deposit_amount: number | string;
+  }
+
+  const defaultForm: FormData = {
     client_name: '', client_email: '', client_phone: '',
     event_name: '', event_type: 'Wedding', venue: 'Main Arena',
     event_date: '', guest_count: 0, total_amount: 0, deposit_amount: 0
   };
-  const [formData, setFormData] = useState<any>(defaultForm);
+  const [formData, setFormData] = useState<FormData>(defaultForm);
 
   const handleCreateClick = () => {
     setEditingId(null);
@@ -107,8 +86,8 @@ export default function Bookings() {
       client_email: booking.client_email,
       client_phone: booking.client_phone || '',
       event_name: booking.event_name,
-      event_type: booking.event_type,
-      venue: booking.venue,
+      event_type: booking.event_type as string,
+      venue: booking.venue as string,
       event_date: booking.event_date ? format(new Date(booking.event_date), 'yyyy-MM-dd') : '',
       guest_count: booking.guest_count || 0,
       total_amount: booking.total_amount || 0,
@@ -121,17 +100,33 @@ export default function Bookings() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const payload = {
-        ...formData,
+      const payload: CreateBookingDTO = {
+        client_name: formData.client_name,
+        client_email: formData.client_email,
+        client_phone: formData.client_phone || undefined,
+        event_name: formData.event_name,
+        event_type: formData.event_type as any,
+        venue: formData.venue as any,
+        event_date: formData.event_date,
         guest_count: Number(formData.guest_count),
         total_amount: Number(formData.total_amount),
         deposit_amount: Number(formData.deposit_amount),
       };
 
       if (editingId) {
-        await api.put(`/bookings/${editingId}`, payload);
+        await bookingService.updateBooking(editingId, payload);
+        toast({
+          title: 'Booking Updated',
+          description: 'The booking has been updated successfully.',
+          variant: 'success',
+        });
       } else {
-        await api.post('/bookings', payload);
+        await bookingService.createBooking(payload);
+        toast({
+          title: 'Booking Created',
+          description: 'New booking has been created successfully.',
+          variant: 'success',
+        });
       }
       
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
@@ -140,7 +135,11 @@ export default function Bookings() {
       setEditingId(null);
       setFormData(defaultForm);
     } catch (error: any) {
-      alert(error.response?.data?.message || `Failed to ${editingId ? 'update' : 'create'} booking`);
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || `Failed to ${editingId ? 'update' : 'create'} booking`,
+        variant: 'destructive',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -148,43 +147,53 @@ export default function Bookings() {
 
   const { data: bookingsData, isLoading: isLoadingBookings } = useQuery({
     queryKey: ['bookings'],
-    queryFn: async () => {
-      const response = await api.get<ApiResponse<{ bookings: Booking[]; total: number }>>('/bookings');
-      return response.data.data;
-    },
+    queryFn: () => bookingService.getBookings(),
   });
 
   const { data: statsData, isLoading: isLoadingStats } = useQuery({
     queryKey: ['bookings', 'stats'],
-    queryFn: async () => {
-      const response = await api.get<ApiResponse<BookingStats>>('/bookings/stats/summary');
-      return response.data.data;
-    },
+    queryFn: () => bookingService.getStats(),
   });
 
   const updateBookingMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      await api.put(`/bookings/${id}`, { status });
+      return bookingService.updateStatus(id, status);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['bookings', 'stats'] });
+      toast({
+        title: 'Status Updated',
+        description: 'Booking status has been updated successfully.',
+        variant: 'success',
+      });
     },
     onError: (error: any) => {
-      alert(error.response?.data?.message || 'Failed to update booking status');
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to update booking status',
+        variant: 'destructive',
+      });
     }
   });
 
   const deleteBookingMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await api.delete(`/bookings/${id}`);
-    },
+    mutationFn: (id: string) => bookingService.deleteBooking(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
       queryClient.invalidateQueries({ queryKey: ['bookings', 'stats'] });
+      toast({
+        title: 'Booking Deleted',
+        description: 'The booking has been deleted successfully.',
+        variant: 'success',
+      });
     },
     onError: (error: any) => {
-      alert(error.response?.data?.message || 'Failed to delete booking');
+      toast({
+        title: 'Error',
+        description: error.response?.data?.message || 'Failed to delete booking',
+        variant: 'destructive',
+      });
     }
   });
 
