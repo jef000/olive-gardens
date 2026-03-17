@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { query } from '../db/pool';
 import { Booking, CreateBookingDTO, UpdateBookingDTO, BookingFilters } from '../types/booking';
 import { sendSuccess, sendError } from '../utils/response';
+import notificationService from '../services/notification.service';
 
 export class BookingController {
   /**
@@ -173,6 +174,16 @@ export class BookingController {
         ]
       );
 
+      // Send notification to admins/moderators
+      await notificationService.notifyBookingEvent(
+        'booking_created',
+        result.rows[0].id,
+        bookingReference,
+        bookingData.client_name,
+        bookingData.event_name,
+        'high'
+      );
+
       sendSuccess(res, { booking: result.rows[0] }, 'Booking created successfully', 201);
     } catch (error) {
       next(error);
@@ -233,7 +244,39 @@ export class BookingController {
         values
       );
 
-      sendSuccess(res, { booking: result.rows[0] }, 'Booking updated successfully');
+      const booking = result.rows[0];
+
+      // Send notification for status changes
+      if (updateData.status) {
+        const notifType = updateData.status === 'confirmed' 
+          ? 'booking_confirmed' 
+          : updateData.status === 'cancelled'
+          ? 'booking_cancelled'
+          : updateData.status === 'completed'
+          ? 'booking_completed'
+          : 'booking_updated';
+
+        await notificationService.notifyBookingEvent(
+          notifType,
+          booking.id,
+          booking.booking_reference,
+          booking.client_name,
+          booking.event_name,
+          updateData.status === 'confirmed' || updateData.status === 'cancelled' ? 'high' : 'medium'
+        );
+      } else {
+        // General update notification
+        await notificationService.notifyBookingEvent(
+          'booking_updated',
+          booking.id,
+          booking.booking_reference,
+          booking.client_name,
+          booking.event_name,
+          'medium'
+        );
+      }
+
+      sendSuccess(res, { booking }, 'Booking updated successfully');
     } catch (error) {
       next(error);
     }

@@ -10,6 +10,7 @@ import Users from './pages/Users';
 import Bookings from './pages/Bookings';
 import Analytics from './pages/Analytics';
 import Gallery from './pages/Gallery';
+import Notifications from './pages/Notifications';
 
 const queryClient = new QueryClient();
 
@@ -80,6 +81,16 @@ function App() {
                 <ProtectedRoute>
                   <AppLayout>
                     <Gallery />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <Notifications />
                   </AppLayout>
                 </ProtectedRoute>
               }

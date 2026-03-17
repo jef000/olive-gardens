@@ -4,6 +4,7 @@ import { User, UserResponse } from '../types/user';
 import { sendSuccess, sendError } from '../utils/response';
 import { hashPassword } from '../utils/password';
 import { sanitizeEmail } from '../utils/sanitize';
+import notificationService from '../services/notification.service';
 
 /**
  * User Controller
@@ -196,6 +197,15 @@ export class UserController {
         values
       );
 
+      // Notify admins about user update
+      await notificationService.notifyUserEvent(
+        'user_updated',
+        result.rows[0].id,
+        result.rows[0].email,
+        result.rows[0].role,
+        'low'
+      );
+
       sendSuccess(res, { user: result.rows[0] }, 'User updated successfully');
     } catch (error) {
       next(error);
@@ -225,6 +235,15 @@ export class UserController {
         sendError(res, 'User not found', 404);
         return;
       }
+
+      // Notify admins about user deletion
+      await notificationService.notifyUserEvent(
+        'user_deleted',
+        result.rows[0].id,
+        result.rows[0].email,
+        result.rows[0].role,
+        'medium'
+      );
 
       sendSuccess(res, { user: result.rows[0] }, 'User deleted successfully');
     } catch (error) {

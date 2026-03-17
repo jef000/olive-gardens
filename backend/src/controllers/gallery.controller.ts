@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { query } from '../db/pool';
 import { GalleryImage, CreateGalleryImageDTO, UpdateGalleryImageDTO, GalleryFilters } from '../types/gallery';
 import { sendSuccess, sendError } from '../utils/response';
+import notificationService from '../services/notification.service';
 
 export class GalleryController {
   /**
@@ -171,6 +172,16 @@ export class GalleryController {
         ]
       );
 
+      // Notify admins about new upload
+      await notificationService.notifyGalleryEvent(
+        'gallery_upload',
+        result.rows[0].id,
+        title || req.file.originalname,
+        album || 'Other',
+        userId || 'Unknown',
+        'low'
+      );
+
       sendSuccess(res, { image: result.rows[0] }, 'Image uploaded successfully', 201);
     } catch (error) {
       next(error);
@@ -285,6 +296,16 @@ export class GalleryController {
         sendError(res, 'Image not found', 404);
         return;
       }
+
+      // Notify admins about deletion
+      await notificationService.notifyGalleryEvent(
+        'gallery_deleted',
+        result.rows[0].id,
+        result.rows[0].title,
+        result.rows[0].album,
+        req.user?.userId || 'Unknown',
+        'low'
+      );
 
       sendSuccess(res, { image: result.rows[0] }, 'Image deleted successfully');
     } catch (error) {
