@@ -6,12 +6,15 @@ import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import Toaster from './components/ui/toaster';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
 import Bookings from './pages/Bookings';
 import Analytics from './pages/Analytics';
 import Gallery from './pages/Gallery';
 import Notifications from './pages/Notifications';
+import Settings from './pages/Settings';
 
 const queryClient = new QueryClient();
 
@@ -37,6 +40,8 @@ function App() {
           <Toaster />
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route
               path="/"
               element={
@@ -93,6 +98,16 @@ function App() {
                 <ProtectedRoute>
                   <AppLayout>
                     <Notifications />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <Settings />
                   </AppLayout>
                 </ProtectedRoute>
               }

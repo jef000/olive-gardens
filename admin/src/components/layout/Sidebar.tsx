@@ -6,6 +6,7 @@ import {
   BarChart3, 
   Image,
   Bell,
+  Settings,
   LogOut 
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
@@ -18,6 +19,7 @@ const navigation = [
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Gallery', href: '/gallery', icon: Image },
   { name: 'Notifications', href: '/notifications', icon: Bell },
+  { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export default function Sidebar() {
