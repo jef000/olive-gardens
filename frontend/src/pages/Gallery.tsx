@@ -1,36 +1,77 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
-import heroImage from "@/assets/hero-garden.jpg";
-import weddingImage from "@/assets/gallery-wedding.jpg";
-import retreatImage from "@/assets/gallery-retreat.jpg";
-import diningImage from "@/assets/gallery-dining.jpg";
+import api from "@/lib/api";
 
-const albums = [
-  { label: "All", key: "all" },
-  { label: "Grounds", key: "grounds" },
-  { label: "Weddings", key: "weddings" },
-  { label: "Retreats", key: "retreats" },
-  { label: "Dining", key: "dining" },
-];
+interface GalleryImage {
+  id: string;
+  title: string;
+  description?: string;
+  url: string;
+  album: string;
+}
 
-const photos = [
-  { src: heroImage, alt: "Aerial view of Olive Retreat Gardens", album: "grounds", aspect: "landscape" },
-  { src: weddingImage, alt: "Wedding ceremony setup", album: "weddings", aspect: "square" },
-  { src: retreatImage, alt: "Retreat training room", album: "retreats", aspect: "square" },
-  { src: diningImage, alt: "Outdoor dining event", album: "dining", aspect: "landscape" },
-  { src: heroImage, alt: "Garden pathways at golden hour", album: "grounds", aspect: "square" },
-  { src: weddingImage, alt: "Floral arch and seating", album: "weddings", aspect: "landscape" },
-  { src: retreatImage, alt: "Peaceful interior space", album: "retreats", aspect: "landscape" },
-  { src: diningImage, alt: "Evening table setting under lights", album: "dining", aspect: "square" },
-];
+interface GalleryResponse {
+  success: boolean;
+  data?: {
+    images?: GalleryImage[];
+    total?: number;
+  };
+}
+
+const resolveImageUrl = (url: string) => {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  const apiBase = api.defaults.baseURL?.replace("/api", "") || "http://localhost:5000";
+  return `${apiBase}${url}`;
+};
+
+const getErrorMessage = (error: unknown) => {
+  if (typeof error === "object" && error !== null) {
+    const withResponse = error as { response?: { data?: { message?: string } } };
+    return withResponse.response?.data?.message;
+  }
+  return undefined;
+};
 
 const Gallery = () => {
   const [activeAlbum, setActiveAlbum] = useState("all");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxVisible, setLightboxVisible] = useState(false);
+  const [images, setImages] = useState<GalleryImage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = activeAlbum === "all" ? photos : photos.filter((p) => p.album === activeAlbum);
+  useEffect(() => {
+    const fetchGallery = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await api.get<GalleryResponse>("/gallery");
+        const apiImages = response.data?.data?.images;
+        setImages(Array.isArray(apiImages) ? apiImages : []);
+      } catch (err: unknown) {
+        setError(getErrorMessage(err) || "Failed to load gallery images.");
+        setImages([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchGallery();
+  }, []);
+
+  const albums = [
+    { label: "All", key: "all" },
+    ...Array.from(new Set(images.map((image) => image.album))).map((album) => ({
+      label: album,
+      key: album,
+    })),
+  ];
+
+  const filtered = activeAlbum === "all"
+    ? images
+    : images.filter((image) => image.album === activeAlbum);
 
   const fadeIn = {
     hidden: { opacity: 0, y: 30 },
@@ -66,7 +107,7 @@ const Gallery = () => {
   }, [lightboxIndex, filtered.length]);
 
   useEffect(() => {
-    if (lightboxIndex === null) return;
+    if (lightboxIndex === null || filtered.length === 0) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeLightbox();
       if (e.key === "ArrowRight") goNext();
@@ -78,7 +119,13 @@ const Gallery = () => {
       document.body.style.overflow = "";
       window.removeEventListener("keydown", handleKey);
     };
-  }, [lightboxIndex, goNext, goPrev]);
+  }, [lightboxIndex, goNext, goPrev, filtered.length]);
+
+  useEffect(() => {
+    if (lightboxIndex !== null && lightboxIndex >= filtered.length) {
+      setLightboxIndex(filtered.length > 0 ? 0 : null);
+    }
+  }, [filtered.length, lightboxIndex]);
 
   return (
     <div className="bg-white min-h-screen">
@@ -131,6 +178,20 @@ const Gallery = () => {
 
       {/* Photo grid */}
       <section className="px-8 lg:px-16 pb-32 max-w-7xl mx-auto">
+        {isLoading && (
+          <div className="text-center py-16 text-muted-foreground">Loading gallery...</div>
+        )}
+
+        {error && (
+          <div className="text-center py-16 text-red-600">{error}</div>
+        )}
+
+        {!isLoading && !error && filtered.length === 0 && (
+          <div className="text-center py-16 text-muted-foreground">
+            No gallery images available yet.
+          </div>
+        )}
+
         <motion.div 
           layout
           className="columns-1 sm:columns-2 lg:columns-3 gap-6 md:gap-8"
@@ -138,7 +199,7 @@ const Gallery = () => {
           <AnimatePresence>
             {filtered.map((photo, i) => (
               <motion.div
-                key={`${photo.src}-${i}`}
+                key={photo.id}
                 layout
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -153,10 +214,13 @@ const Gallery = () => {
                   </span>
                 </div>
                 <img
-                  src={photo.src}
-                  alt={photo.alt}
+                  src={resolveImageUrl(photo.url)}
+                  alt={photo.title}
                   className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-[1.5s] ease-out"
                   loading="lazy"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "https://placehold.co/900x600?text=Image+Not+Found";
+                  }}
                 />
               </motion.div>
             ))}
@@ -165,7 +229,7 @@ const Gallery = () => {
       </section>
 
       {/* Lightbox */}
-      {lightboxIndex !== null && (
+      {lightboxIndex !== null && filtered[lightboxIndex] && (
         <div
           className={`fixed inset-0 z-50 flex items-center justify-center transition-all duration-300 ${
             lightboxVisible ? "bg-foreground/90 backdrop-blur-sm" : "bg-foreground/0"
@@ -190,8 +254,8 @@ const Gallery = () => {
 
           {/* Image */}
           <img
-            src={filtered[lightboxIndex].src}
-            alt={filtered[lightboxIndex].alt}
+            src={resolveImageUrl(filtered[lightboxIndex].url)}
+            alt={filtered[lightboxIndex].title}
             onClick={(e) => e.stopPropagation()}
             className={`max-h-[85vh] max-w-[90vw] object-contain rounded-sm shadow-2xl transition-all duration-300 ${
               lightboxVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
@@ -212,7 +276,7 @@ const Gallery = () => {
               lightboxVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
             }`}
           >
-            <p className="mb-1">{filtered[lightboxIndex].alt}</p>
+            <p className="mb-1">{filtered[lightboxIndex].description || filtered[lightboxIndex].title}</p>
             <p className="text-background/50">{lightboxIndex + 1} / {filtered.length}</p>
           </div>
         </div>
