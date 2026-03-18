@@ -7,7 +7,7 @@ import api from "@/lib/api";
 
 const spaces = [
   { id: "main-arena", name: "Main Arena", capacity: 500 },
-  { id: "garden-hall", name: "Garden Hall", capacity: 120 },
+  { id: "gardens", name: "Gardens", capacity: 150 },
   { id: "therapy-room", name: "Therapy Room", capacity: 6 },
 ];
 
@@ -15,6 +15,7 @@ const BookingPage = () => {
   const [searchParams] = useSearchParams();
   const prefilledSpace = searchParams.get("space") || "";
   const prefilledDate = searchParams.get("date") || "";
+  const prefilledNotes = searchParams.get("notes") || "";
 
   const hasPreselection = prefilledSpace && prefilledDate && spaces.some(s => s.id === prefilledSpace);
 
@@ -29,7 +30,7 @@ const BookingPage = () => {
     email: "",
     phone: "",
     headcount: "",
-    notes: "",
+    notes: prefilledNotes,
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -56,9 +57,12 @@ const BookingPage = () => {
 
       await api.post('/bookings/public', payload);
       setStep(3);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Booking submission error:', err);
-      setError(err.response?.data?.message || 'Failed to submit booking request. Please try again.');
+      const errorMsg = typeof err === 'object' && err !== null && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : null;
+      setError(errorMsg || 'Failed to submit booking request. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

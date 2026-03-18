@@ -41,7 +41,7 @@ const packages = [
         subSpaces: [],
       },
       {
-        id: "garden-hall",
+        id: "gardens",
         title: "Gardens",
         capacity: "Multiple outdoor spaces",
         description: "Our gardens include curated spaces for prayer, picnics, intimate gatherings, and overnight outdoor experiences.",
@@ -96,7 +96,7 @@ const packages = [
         subSpaces: [],
       },
       {
-        id: "garden-hall",
+        id: "gardens",
         title: "Group Workshops",
         capacity: "10–30 participants",
         description: "Facilitated workshops on leadership, wellness, conflict resolution, and personal development. Multi-day retreats available.",
@@ -332,12 +332,23 @@ const Services = () => {
                             <div className="flex justify-between items-start mb-2 gap-2">
                               <h5 className="font-serif text-lg text-foreground leading-tight">{space.title}</h5>
                             </div>
-                            <div className="text-xs font-medium text-primary mb-3 flex items-center gap-1">
-                              {space.capacity}
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="text-xs font-medium text-primary flex items-center gap-1">
+                                {space.capacity}
+                              </div>
                             </div>
-                            <p className="text-sm text-muted-foreground leading-relaxed">
+                            <p className="text-sm text-muted-foreground leading-relaxed mb-4">
                               {space.description}
                             </p>
+                            <button
+                              onClick={() => {
+                                setSelectedService(null);
+                                navigate(`/book?space=${selectedService.id}&notes=Interested in ${space.title}`);
+                              }}
+                              className="text-sm font-medium text-foreground hover:text-primary transition-colors flex items-center gap-1"
+                            >
+                              Book this space <ChevronRight size={14} />
+                            </button>
                           </div>
                         </div>
                       ))}
