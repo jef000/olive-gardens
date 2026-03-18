@@ -60,8 +60,8 @@ export default function Gallery() {
 
   const { data: statsData, isLoading: isLoadingStats } = useQuery({
     queryKey: ['gallery', 'stats'],
-    queryFn: async () => {
-      const response = await api.get<ApiResponse<any>>('/gallery/stats/summary');
+    queryFn: async (): Promise<{ total_storage_bytes: number; total_images: number; album_breakdown: { album: string; count: string }[] }> => {
+      const response = await api.get('/gallery/stats/summary');
       return response.data.data;
     },
   });
@@ -74,8 +74,11 @@ export default function Gallery() {
       queryClient.invalidateQueries({ queryKey: ['gallery'] });
       queryClient.invalidateQueries({ queryKey: ['gallery', 'stats'] });
     },
-    onError: (error: any) => {
-      alert(error.response?.data?.message || 'Failed to delete image');
+    onError: (error: unknown) => {
+      const errorMsg = typeof error === 'object' && error !== null && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+        : null;
+      alert(errorMsg || 'Failed to delete image');
     }
   });
 
@@ -138,20 +141,42 @@ export default function Gallery() {
       resetUploadState();
       queryClient.invalidateQueries({ queryKey: ['gallery'] });
       queryClient.invalidateQueries({ queryKey: ['gallery', 'stats'] });
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to upload image');
+    } catch (error: unknown) {
+      const errorMsg = typeof error === 'object' && error !== null && 'response' in error
+        ? (error as { response?: { data?: { message?: string } } }).response?.data?.message
+        : null;
+      alert(errorMsg || 'Failed to upload image');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const normalizedImages = Array.isArray(galleryData?.images) ? galleryData.images : [];
+  
+  const albumStructure = [
+    { value: 'Main Arena', label: 'Main Arena', parent: null },
+    { value: 'Gardens', label: 'Gardens', parent: null },
+    { value: 'Garden of Eden', label: '  ↳ Garden of Eden', parent: 'Gardens' },
+    { value: 'Mount Sinai Prayer Area', label: '  ↳ Mount Sinai Prayer Area', parent: 'Gardens' },
+    { value: 'Picnic Grounds', label: '  ↳ Picnic Grounds', parent: 'Gardens' },
+    { value: 'Camping Grounds', label: '  ↳ Camping Grounds', parent: 'Gardens' },
+    { value: 'Therapy Room', label: 'Therapy Room', parent: null },
+    { value: 'Events', label: 'Events', parent: null },
+    { value: 'Facilities', label: 'Facilities', parent: null },
+    { value: 'Other', label: 'Other', parent: null },
+  ];
 
-  const filteredImages = normalizedImages.filter(
-    (img) => albumFilter === 'all' || img.album === albumFilter
-  );
+  const gardenSubAlbums = ['Garden of Eden', 'Mount Sinai Prayer Area', 'Picnic Grounds', 'Camping Grounds'];
+  
+  const getFilteredImagesForAlbum = (album: string) => {
+    if (album === 'all') return normalizedImages;
+    if (album === 'Gardens') {
+      return normalizedImages.filter(img => img.album === 'Gardens' || gardenSubAlbums.includes(img.album));
+    }
+    return normalizedImages.filter(img => img.album === album);
+  };
 
-  const albums = ['Main Arena', 'Garden Hall', 'Therapy Room', 'Events', 'Facilities', 'Other'];
+  const filteredImages = getFilteredImagesForAlbum(albumFilter);
   const formatBytes = (bytes: number) => {
     if (!bytes) return '0 MB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
@@ -192,9 +217,9 @@ export default function Gallery() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Spaces & Albums</SelectItem>
-                {albums.map((album) => (
-                  <SelectItem key={album} value={album}>
-                    {album}
+                {albumStructure.map((album) => (
+                  <SelectItem key={album.value} value={album.value}>
+                    {album.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -304,21 +329,32 @@ export default function Gallery() {
           </CardHeader>
           <CardContent className="pt-6">
             <div className="space-y-3">
-              {albums.map((album) => {
-                // Fallback to manual count if statsData missing
-                const statsAlbum = statsData?.album_breakdown?.find((a: any) => a.album === album);
-                const count = statsAlbum ? parseInt(statsAlbum.count) : normalizedImages.filter((img) => img.album === album).length;
+              {albumStructure.map((album) => {
+                // Calculate count including sub-albums for Gardens
+                let count = 0;
+                if (album.value === 'Gardens') {
+                  const gardensImages = getFilteredImagesForAlbum('Gardens');
+                  count = gardensImages.length;
+                } else {
+                  const statsAlbum = statsData?.album_breakdown?.find((a: { album: string; count: string }) => a.album === album.value);
+                  count = statsAlbum ? parseInt(statsAlbum.count) : normalizedImages.filter((img) => img.album === album.value).length;
+                }
+                
                 return (
                   <div
-                    key={album}
-                    className="flex items-center justify-between p-3.5 bg-gray-50/50 border border-border/50 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer group"
-                    onClick={() => setAlbumFilter(album)}
+                    key={album.value}
+                    className={`flex items-center justify-between p-3.5 bg-gray-50/50 border border-border/50 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer group ${
+                      album.parent ? 'ml-6 bg-white' : ''
+                    }`}
+                    onClick={() => setAlbumFilter(album.value)}
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-white shadow-sm border border-border/50 flex items-center justify-center group-hover:border-[#8b9172]/30 transition-colors">
                         <FolderPlus className="w-5 h-5 text-[#8b9172]" />
                       </div>
-                      <span className="font-medium text-gray-900">{album}</span>
+                      <span className={`font-medium text-gray-900 ${
+                        album.parent ? 'text-sm' : ''
+                      }`}>{album.parent ? album.label : album.value}</span>
                     </div>
                     <span className="text-xs font-medium bg-white px-2.5 py-1 rounded-full border border-border/50 text-gray-600">
                       {count} items
@@ -429,8 +465,8 @@ export default function Gallery() {
                     <SelectValue placeholder="Select an album" />
                   </SelectTrigger>
                   <SelectContent>
-                    {albums.map(a => (
-                      <SelectItem key={a} value={a}>{a}</SelectItem>
+                    {albumStructure.map(a => (
+                      <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

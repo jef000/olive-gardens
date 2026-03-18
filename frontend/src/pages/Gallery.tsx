@@ -61,17 +61,32 @@ const Gallery = () => {
     fetchGallery();
   }, []);
 
+  const gardenSubAlbums = [
+    "Gardens",
+    "Garden of Eden",
+    "Mount Sinai Prayer Area",
+    "Picnic Grounds",
+    "Camping Grounds"
+  ];
+
+  const isGardenAlbum = (album: string) => gardenSubAlbums.includes(album) || album.toLowerCase().includes("garden") || album.toLowerCase().includes("picnic") || album.toLowerCase().includes("camp") || album.toLowerCase().includes("sinai");
+
   const albums = [
     { label: "All", key: "all" },
-    ...Array.from(new Set(images.map((image) => image.album))).map((album) => ({
-      label: album,
-      key: album,
-    })),
+    { label: "Gardens", key: "gardens" },
+    ...Array.from(new Set(images.map((image) => image.album)))
+      .filter((album) => !isGardenAlbum(album))
+      .map((album) => ({
+        label: album,
+        key: album,
+      })),
   ];
 
   const filtered = activeAlbum === "all"
     ? images
-    : images.filter((image) => image.album === activeAlbum);
+    : activeAlbum === "gardens"
+      ? images.filter((image) => isGardenAlbum(image.album))
+      : images.filter((image) => image.album === activeAlbum);
 
   const fadeIn = {
     hidden: { opacity: 0, y: 30 },

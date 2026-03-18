@@ -2,10 +2,30 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { venueSpaces } from "@/data/mockAvailability";
 import { format } from "date-fns";
 import { CalendarIcon, Users, Info } from "lucide-react";
 import api from "@/lib/api";
+
+const venueSpaces = [
+  {
+    id: "main-arena",
+    name: "Main Arena",
+    capacity: 500,
+    description: "Grand open-air venue for weddings & large events",
+  },
+  {
+    id: "gardens",
+    name: "Gardens",
+    capacity: 150,
+    description: "Curated outdoor spaces including Garden of Eden and Picnic Grounds",
+  },
+  {
+    id: "therapy-room",
+    name: "Therapy Room",
+    capacity: 6,
+    description: "Private space for counselling & small sessions",
+  },
+];
 
 type BookingStatus = "booked" | "tentative";
 
