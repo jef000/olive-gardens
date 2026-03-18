@@ -1,9 +1,30 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import heroImage from "@/assets/hero-garden.jpg";
 import weddingImage from "@/assets/gallery-wedding.jpg";
 import retreatImage from "@/assets/gallery-retreat.jpg";
 import diningImage from "@/assets/gallery-dining.jpg";
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, X } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+
+interface SubSpace {
+  title: string;
+  capacity: string;
+  description: string;
+  image: string;
+}
+
+interface ServiceItem {
+  id: string;
+  title: string;
+  capacity: string;
+  description: string;
+  includes: string[];
+  price: string;
+  image: string;
+  subSpaces: SubSpace[];
+}
 
 const packages = [
   {
@@ -17,15 +38,47 @@ const packages = [
         includes: ["Setup & teardown", "Basic sound system", "Parking for 100 vehicles", "Security"],
         price: "From KES 150,000",
         image: weddingImage,
+        subSpaces: [],
       },
       {
         id: "garden-hall",
-        title: "Garden Hall",
-        capacity: "Up to 120 guests",
-        description: "An intimate indoor-outdoor space with floor-to-ceiling windows overlooking the gardens. Perfect for workshops, retreats, and smaller celebrations.",
-        includes: ["Climate control", "Projector & screen", "Wi-Fi", "Tea/coffee station"],
-        price: "From KES 50,000",
+        title: "Gardens",
+        capacity: "Multiple outdoor spaces",
+        description: "Our gardens include curated spaces for prayer, picnics, intimate gatherings, and overnight outdoor experiences.",
+        includes: [
+          "Garden of Eden (Up to 150 guests)",
+          "Mount Sinai Prayer Area (Up to 80 guests)",
+          "Picnic Grounds (Up to 100 guests)",
+          "Camping Grounds (Up to 60 guests)",
+        ],
+        price: "",
         image: retreatImage,
+        subSpaces: [
+          {
+            title: "Garden of Eden",
+            capacity: "Up to 150 guests",
+            description: "A lush tropical paradise with flowering paths, stone pathways, and a gentle water feature. Ideal for intimate weddings, photo shoots, and garden parties. The dappled light here is unforgettable.",
+            image: heroImage,
+          },
+          {
+            title: "Mount Sinai Prayer Area",
+            capacity: "Up to 80 guests",
+            description: "A hilltop space designed for reflection, prayer, and spiritual gatherings. Stone seating circles overlook misty valleys and olive groves. Perfect for religious retreats and meditation groups.",
+            image: retreatImage,
+          },
+          {
+            title: "Picnic Grounds",
+            capacity: "Up to 100 guests",
+            description: "Rolling lawns shaded by ancient olive trees, set up with blankets and baskets. Ideal for family reunions, school trips, birthday celebrations, and casual team outings.",
+            image: diningImage,
+          },
+          {
+            title: "Camping Grounds",
+            capacity: "Up to 60 guests",
+            description: "Safari-style tents and a campfire circle under the stars. Our camping grounds offer a unique overnight experience with highland air, stargazing, and morning birdsong.",
+            image: weddingImage,
+          },
+        ],
       },
     ],
   },
@@ -40,6 +93,7 @@ const packages = [
         includes: ["50-minute sessions", "Private therapy room", "Intake assessment", "Follow-up notes"],
         price: "KES 5,000 per session",
         image: retreatImage,
+        subSpaces: [],
       },
       {
         id: "garden-hall",
@@ -49,6 +103,7 @@ const packages = [
         includes: ["Facilitator", "Materials", "Tea breaks", "Certificate of attendance"],
         price: "From KES 3,000 per person",
         image: diningImage,
+        subSpaces: [],
       },
     ],
   },
@@ -63,12 +118,16 @@ const packages = [
         includes: ["Menu consultation", "Service staff", "Table settings", "Cleanup"],
         price: "From KES 2,500 per person",
         image: diningImage,
+        subSpaces: [],
       },
     ],
   },
 ];
 
 const Services = () => {
+  const navigate = useNavigate();
+  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+
   const fadeIn = {
     hidden: { opacity: 0, y: 30 },
     visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" as const } }
@@ -132,7 +191,8 @@ const Services = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
                   transition={{ duration: 0.8, delay: i * 0.1 }}
-                  className="group bg-white rounded-3xl overflow-hidden border border-border/50 shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col h-full"
+                  className="group bg-white rounded-3xl overflow-hidden border border-border/50 shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col h-full cursor-pointer"
+                  onClick={() => setSelectedService(item)}
                 >
                   <div className="aspect-[16/10] overflow-hidden relative">
                     <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors duration-500 z-10" />
@@ -167,17 +227,10 @@ const Services = () => {
                       </ul>
                     </div>
                     
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-border mt-auto">
-                      <div className="flex flex-col">
-                        <span className="text-sm uppercase tracking-widest text-muted-foreground mb-1">Starting from</span>
-                        <span className="text-xl font-serif text-foreground">{item.price}</span>
-                      </div>
-                      <Link 
-                        to={`/book?space=${item.id}`}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-black text-white rounded-full text-sm font-medium hover:bg-primary transition-colors duration-300"
-                      >
-                        Book Now <ChevronRight size={16} />
-                      </Link>
+                    <div className="flex items-center justify-between pt-6 border-t border-border mt-auto">
+                      <span className="text-sm font-medium text-primary flex items-center gap-1 group-hover:underline">
+                        View Details <ChevronRight size={16} />
+                      </span>
                     </div>
                   </div>
                 </motion.div>
@@ -212,6 +265,102 @@ const Services = () => {
           </motion.div>
         </div>
       </section>
+
+      {/* Service Details Modal */}
+      <Dialog open={!!selectedService} onOpenChange={(open) => !open && setSelectedService(null)}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-white max-h-[90vh] flex flex-col rounded-3xl [&>button]:hidden">
+          {selectedService && (
+            <>
+              <div className="relative h-64 sm:h-80 shrink-0">
+                <img 
+                  src={selectedService.image} 
+                  alt={selectedService.title} 
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+                <div className="absolute bottom-6 left-6 right-6 text-white">
+                  <div className="text-sm font-medium uppercase tracking-widest text-white/80 mb-2">
+                    {selectedService.capacity}
+                  </div>
+                  <DialogTitle className="text-3xl md:text-4xl font-serif text-white m-0">
+                    {selectedService.title}
+                  </DialogTitle>
+                </div>
+                <button 
+                  onClick={() => setSelectedService(null)}
+                  className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/40 backdrop-blur-sm text-white rounded-full transition-colors z-50"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="p-6 md:p-10 overflow-y-auto">
+                <DialogDescription className="text-base md:text-lg text-muted-foreground leading-relaxed mb-8">
+                  {selectedService.description}
+                </DialogDescription>
+
+                <div className="mb-10">
+                  <h4 className="text-sm font-medium uppercase tracking-widest text-foreground mb-4 border-b border-border/50 pb-2">
+                    What's Included
+                  </h4>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-6">
+                    {selectedService.includes.map((inc: string) => (
+                      <li key={inc} className="text-sm text-muted-foreground flex items-start gap-2.5">
+                        <Check className="text-primary mt-0.5 shrink-0" size={16} />
+                        <span>{inc}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {selectedService.subSpaces?.length > 0 && (
+                  <div className="mb-10">
+                    <h4 className="text-sm font-medium uppercase tracking-widest text-foreground mb-6 border-b border-border/50 pb-2">
+                      Available Spaces
+                    </h4>
+                    <div className="grid sm:grid-cols-2 gap-6">
+                      {selectedService.subSpaces.map((space: SubSpace, idx: number) => (
+                        <div key={idx} className="bg-muted/30 rounded-2xl overflow-hidden border border-border/50">
+                          <div className="h-48 overflow-hidden">
+                            <img 
+                              src={space.image} 
+                              alt={space.title} 
+                              className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                            />
+                          </div>
+                          <div className="p-5">
+                            <div className="flex justify-between items-start mb-2 gap-2">
+                              <h5 className="font-serif text-lg text-foreground leading-tight">{space.title}</h5>
+                            </div>
+                            <div className="text-xs font-medium text-primary mb-3 flex items-center gap-1">
+                              {space.capacity}
+                            </div>
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                              {space.description}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end pt-6 border-t border-border/50">
+                  <button 
+                    onClick={() => {
+                      setSelectedService(null);
+                      navigate(`/book?space=${selectedService.id}`);
+                    }}
+                    className="px-8 py-4 bg-black text-white rounded-full text-sm font-medium hover:bg-primary transition-colors duration-300 flex items-center gap-2"
+                  >
+                    Book {selectedService.title} <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
