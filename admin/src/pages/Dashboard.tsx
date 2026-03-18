@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Calendar, Wallet, HeartHandshake, MapPin, Tent, TrendingUp, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Users, Calendar, Wallet, HeartHandshake, MapPin, Tent, TrendingUp, Loader2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { format } from 'date-fns';
 import type { ApiResponse } from '@/types';
+import { cn } from '@/lib/utils';
 
 interface DashboardMetrics {
   current_month: {
@@ -128,32 +129,44 @@ export default function Dashboard() {
   }).filter(v => v.utilization > 0 || v.name === 'Main Arena' || v.name === 'Garden Hall' || v.name === 'Therapy Room');
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-8">
       <div>
-        <h1 className="text-3xl font-serif text-gray-900">Welcome to Olive Garden</h1>
-        <p className="text-gray-600 mt-2 font-light">Overview of your venue reservations and operations</p>
+        <h1 className="text-3xl font-serif text-gray-900 tracking-tight">Overview</h1>
+        <p className="text-gray-500 mt-1.5 font-medium">Track your venue reservations and operations</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => (
-          <Card key={index} className="border-border/50 shadow-sm">
+          <Card key={index} className="border-gray-200/60 shadow-sm hover:shadow-md transition-shadow duration-200 bg-white/50 backdrop-blur-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600 uppercase tracking-wider">
+              <CardTitle className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                 {stat.title}
               </CardTitle>
-              <stat.icon className="w-4 h-4 text-[#8b9172]" />
+              <div className="w-8 h-8 rounded-full bg-[#8b9172]/10 flex items-center justify-center">
+                <stat.icon className="w-4 h-4 text-[#8b9172]" />
+              </div>
             </CardHeader>
             <CardContent>
               {isLoadingDashboard ? (
-                <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                <div className="flex items-center gap-2 text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm">Loading...</span>
+                </div>
               ) : (
                 <>
-                  <div className="text-2xl font-bold font-serif">{stat.value}</div>
-                  <p className={`text-xs mt-1 font-medium ${
-                    stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {stat.change} <span className="text-gray-500 font-normal">{stat.description}</span>
-                  </p>
+                  <div className="text-3xl font-bold font-serif text-gray-900 tracking-tight">{stat.value}</div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className={cn(
+                      "flex items-center gap-0.5 text-xs font-semibold px-2 py-0.5 rounded-full",
+                      stat.changeType === 'positive' 
+                        ? 'bg-emerald-50 text-emerald-600' 
+                        : 'bg-rose-50 text-rose-600'
+                    )}>
+                      {stat.changeType === 'positive' ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                      {stat.change}
+                    </span>
+                    <span className="text-xs text-gray-400 font-medium">{stat.description}</span>
+                  </div>
                 </>
               )}
             </CardContent>
@@ -162,42 +175,48 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 border-border/50 shadow-sm">
-          <CardHeader className="border-b border-border/50 pb-4">
-            <CardTitle className="font-serif text-xl">Upcoming Reservations</CardTitle>
+        <Card className="lg:col-span-2 border-gray-200/60 shadow-sm bg-white/50 backdrop-blur-sm">
+          <CardHeader className="border-b border-gray-100 pb-4">
+            <CardTitle className="font-serif text-xl text-gray-900">Upcoming Reservations</CardTitle>
+            <CardDescription className="text-gray-500 font-medium">Your next scheduled events and bookings</CardDescription>
           </CardHeader>
-          <CardContent className="pt-6">
+          <CardContent className="p-0">
             {isLoadingBookings ? (
-              <div className="flex justify-center py-8">
+              <div className="flex justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-[#8b9172]" />
               </div>
             ) : !recentBookingsData || recentBookingsData.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-12 text-gray-400 font-medium">
                 No upcoming reservations found.
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="divide-y divide-gray-100">
                 {recentBookingsData.map((booking) => (
-                  <div key={booking.id} className="flex items-center justify-between py-3 border-b border-border/50 last:border-0 last:pb-0">
+                  <div key={booking.id} className="flex items-center justify-between p-6 hover:bg-gray-50/50 transition-colors">
                     <div className="flex gap-4 items-center">
-                      <div className="w-12 h-12 rounded-xl bg-[#8b9172]/10 text-[#8b9172] flex flex-col items-center justify-center font-medium">
-                        <span className="text-xs uppercase leading-none">{format(new Date(booking.event_date), 'MMM')}</span>
-                        <span className="text-lg leading-none mt-1">{format(new Date(booking.event_date), 'dd')}</span>
+                      <div className="w-14 h-14 rounded-2xl bg-[#8b9172]/10 text-[#8b9172] flex flex-col items-center justify-center font-medium shadow-sm">
+                        <span className="text-[10px] font-bold uppercase tracking-wider">{format(new Date(booking.event_date), 'MMM')}</span>
+                        <span className="text-xl font-serif font-bold leading-none mt-0.5">{format(new Date(booking.event_date), 'dd')}</span>
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{booking.event_name || booking.client_name}</p>
-                        <p className="text-sm text-gray-500">{booking.venue} • {booking.event_type}</p>
+                        <p className="font-semibold text-gray-900 text-base">{booking.event_name || booking.client_name}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-sm font-medium text-gray-500">{booking.venue}</span>
+                          <span className="w-1 h-1 rounded-full bg-gray-300" />
+                          <span className="text-sm font-medium text-gray-500">{booking.event_type}</span>
+                        </div>
                       </div>
                     </div>
-                    <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+                    <span className={cn(
+                      "px-3 py-1 text-xs font-semibold rounded-full border shadow-sm",
                       booking.status === 'confirmed' 
-                        ? 'bg-[#8b9172]/15 text-[#8b9172]' 
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
                         : booking.status === 'completed'
-                        ? 'bg-blue-100 text-blue-800'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
                         : booking.status === 'cancelled'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    )}>
                       {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
                     </span>
                   </div>
@@ -207,33 +226,36 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/50 shadow-sm">
-          <CardHeader className="border-b border-border/50 pb-4">
-            <CardTitle className="font-serif text-xl">Space Popularity</CardTitle>
+        <Card className="border-gray-200/60 shadow-sm bg-white/50 backdrop-blur-sm">
+          <CardHeader className="border-b border-gray-100 pb-4">
+            <CardTitle className="font-serif text-xl text-gray-900">Space Utilization</CardTitle>
+            <CardDescription className="text-gray-500 font-medium">Popularity across venues</CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
             {isLoadingTrends ? (
-              <div className="flex justify-center py-8">
+              <div className="flex justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-[#8b9172]" />
               </div>
             ) : (
               <div className="space-y-6">
                 {venueStats.map((space) => (
-                  <div key={space.name} className="space-y-2">
+                  <div key={space.name} className="space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <space.icon className="w-4 h-4 text-[#8b9172]" />
-                        <span className="font-medium text-sm text-gray-900">{space.name}</span>
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-md bg-gray-100 text-gray-600">
+                          <space.icon className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold text-sm text-gray-900">{space.name}</span>
                       </div>
-                      <span className="text-sm font-medium">{space.utilization}%</span>
+                      <span className="text-sm font-bold text-gray-900">{space.utilization}%</span>
                     </div>
                     <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-[#8b9172] rounded-full transition-all duration-500" 
+                        className="h-full bg-gradient-to-r from-[#8b9172] to-[#a3a989] rounded-full transition-all duration-1000 ease-out" 
                         style={{ width: `${space.utilization}%` }}
                       />
                     </div>
-                    <p className="text-xs text-gray-500 text-right">Capacity: {space.capacity}</p>
+                    <p className="text-xs font-medium text-gray-400 text-right">Capacity: {space.capacity}</p>
                   </div>
                 ))}
               </div>
