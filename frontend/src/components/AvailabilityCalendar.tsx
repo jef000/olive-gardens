@@ -1,10 +1,19 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { venueSpaces, getBookingsForSpace, getBookingForDate, type BookedSlot } from "@/data/mockAvailability";
+import { venueSpaces } from "@/data/mockAvailability";
 import { format } from "date-fns";
 import { CalendarIcon, Users, Info } from "lucide-react";
+import api from "@/lib/api";
+
+type BookingStatus = "booked" | "tentative";
+
+interface BookedSlot {
+  date: string;
+  status: BookingStatus;
+  label?: string;
+}
 
 interface AvailabilityCalendarProps {
   onSelectBooking?: (spaceId: string, date: string) => void;
@@ -15,8 +24,38 @@ export function AvailabilityCalendar({ onSelectBooking, initialSpaceId }: Availa
   const navigate = useNavigate();
   const [selectedSpaceId, setSelectedSpaceId] = useState(initialSpaceId || venueSpaces[0].id);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>();
+  const [spaceBookings, setSpaceBookings] = useState<BookedSlot[]>([]);
+  const [isLoadingAvailability, setIsLoadingAvailability] = useState(false);
 
-  const spaceBookings = useMemo(() => getBookingsForSpace(selectedSpaceId), [selectedSpaceId]);
+  useEffect(() => {
+    const loadAvailability = async () => {
+      const selectedSpace = venueSpaces.find((space) => space.id === selectedSpaceId);
+      if (!selectedSpace) {
+        setSpaceBookings([]);
+        return;
+      }
+
+      setIsLoadingAvailability(true);
+      try {
+        const response = await api.get("/bookings/public/availability", {
+          params: { venue: selectedSpace.name },
+        });
+
+        const availability = response.data?.data?.availability;
+        if (Array.isArray(availability)) {
+          setSpaceBookings(availability);
+        } else {
+          setSpaceBookings([]);
+        }
+      } catch (_error) {
+        setSpaceBookings([]);
+      } finally {
+        setIsLoadingAvailability(false);
+      }
+    };
+
+    loadAvailability();
+  }, [selectedSpaceId]);
 
   const bookedDates = useMemo(() => {
     return spaceBookings
@@ -37,7 +76,7 @@ export function AvailabilityCalendar({ onSelectBooking, initialSpaceId }: Availa
     : null;
 
   const selectedBooking: BookedSlot | undefined = selectedDateStr
-    ? getBookingForDate(selectedSpaceId, selectedDateStr)
+    ? spaceBookings.find((booking) => booking.date === selectedDateStr)
     : undefined;
 
   return (
@@ -191,6 +230,9 @@ export function AvailabilityCalendar({ onSelectBooking, initialSpaceId }: Availa
             <h4 className="font-heading text-sm font-semibold uppercase tracking-wide mb-3">
               Upcoming at {selectedSpace.name}
             </h4>
+            {isLoadingAvailability && (
+              <p className="font-body text-sm text-muted-foreground">Loading availability...</p>
+            )}
             <div className="space-y-2">
               {spaceBookings.slice(0, 5).map((b, i) => (
                 <div key={i} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">

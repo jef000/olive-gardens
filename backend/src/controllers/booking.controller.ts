@@ -6,6 +6,59 @@ import notificationService from '../services/notification.service';
 
 export class BookingController {
   /**
+   * Get public availability by venue
+   * GET /api/bookings/public/availability
+   * Security: Public
+   */
+  async getPublicAvailability(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { venue } = req.query as { venue?: string };
+
+      if (!venue) {
+        sendError(res, 'Venue is required', 400);
+        return;
+      }
+
+      const result = await query<{
+        event_date: string;
+        status: string;
+        event_name: string;
+      }>(
+        `SELECT event_date, status, event_name
+         FROM bookings
+         WHERE venue = $1
+           AND status IN ('pending', 'confirmed', 'completed')
+           AND event_date >= CURRENT_DATE
+         ORDER BY event_date ASC`,
+        [venue]
+      );
+
+      const availability = result.rows
+        .map((row) => {
+          if (!row.event_date) {
+            return null;
+          }
+
+          const parsedDate = new Date(row.event_date);
+          if (Number.isNaN(parsedDate.getTime())) {
+            return null;
+          }
+
+          return {
+            date: parsedDate.toISOString().split('T')[0],
+            status: row.status === 'pending' ? 'tentative' : 'booked',
+            label: row.event_name,
+          };
+        })
+        .filter(Boolean) as { date: string; status: string; label?: string }[];
+
+      sendSuccess(res, { availability });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Get all bookings with optional filters
    * GET /api/bookings
    * Security: Admin and moderator only

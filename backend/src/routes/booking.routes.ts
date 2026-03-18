@@ -8,6 +8,12 @@ const router = Router();
  * Public Routes
  */
 
+// GET /bookings/public/availability - Get venue availability for calendar
+router.get(
+  '/public/availability',
+  bookingController.getPublicAvailability.bind(bookingController)
+);
+
 // POST /bookings/public - Create new booking from frontend
 router.post(
   '/public',
