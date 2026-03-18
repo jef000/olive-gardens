@@ -6,6 +6,7 @@ import {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } from '../validators/auth.validator';
 import { authLimiter } from '../middleware/rateLimiter';
 import { authenticate } from '../middleware/auth.middleware';
@@ -53,6 +54,15 @@ router.post(
   authLimiter,
   validate(resetPasswordSchema),
   authController.resetPassword.bind(authController)
+);
+
+// POST /auth/change-password - Change password (protected)
+router.post(
+  '/change-password',
+  authenticate,
+  authLimiter,
+  validate(changePasswordSchema),
+  authController.changePassword.bind(authController)
 );
 
 export default router;

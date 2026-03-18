@@ -12,8 +12,8 @@ export interface JwtPayload {
  * Security: Short-lived token for API authentication
  */
 export const generateToken = (payload: JwtPayload): string => {
-  return jwt.sign(payload, config.jwt.secret, {
-    expiresIn: config.jwt.expiry,
+  return jwt.sign(payload, config.jwt.secret as string, {
+    expiresIn: config.jwt.expiry as import('jsonwebtoken').SignOptions['expiresIn'],
     issuer: 'olive-garden-api',
     audience: 'olive-garden-client',
   });
@@ -25,7 +25,7 @@ export const generateToken = (payload: JwtPayload): string => {
  */
 export const verifyToken = (token: string): JwtPayload => {
   try {
-    return jwt.verify(token, config.jwt.secret, {
+    return jwt.verify(token, config.jwt.secret as string, {
       issuer: 'olive-garden-api',
       audience: 'olive-garden-client',
     }) as JwtPayload;

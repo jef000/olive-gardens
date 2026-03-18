@@ -49,6 +49,6 @@ CREATE TRIGGER update_users_updated_at
 INSERT INTO users (email, password, role)
 VALUES (
   'admin@olivegarden.com',
-  '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyYIeWIgAnKW',
+  '$2b$12$.bdRWSOku9QIHh98efr3t.5NtxHEvU0MJz2g2XUiTbVjJHFF6vaQ2',
   'admin'
 ) ON CONFLICT (email) DO NOTHING;

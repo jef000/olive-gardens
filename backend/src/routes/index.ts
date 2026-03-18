@@ -6,6 +6,7 @@ import galleryRoutes from './gallery.routes';
 import analyticsRoutes from './analytics.routes';
 import auditRoutes from './audit.routes';
 import notificationRoutes from './notification.routes';
+import inquiryRoutes from './inquiry.routes';
 
 const router = Router();
 
@@ -21,6 +22,7 @@ router.use('/gallery', galleryRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/audit', auditRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/inquiries', inquiryRoutes);
 
 // Health check endpoint
 router.get('/health', (_req, res) => {

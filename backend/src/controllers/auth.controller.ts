@@ -283,6 +283,67 @@ export class AuthController {
       next(error);
     }
   }
+
+  /**
+   * Change Password - Change password for authenticated user
+   * POST /auth/change-password
+   * 
+   * Security Considerations:
+   * - Requires authentication (user must be logged in)
+   * - Verifies current password before allowing change
+   * - Prevents reuse of current password
+   * - Enforces strong password requirements
+   * - Hashes new password with bcrypt
+   * - Rate-limited to prevent brute force
+   */
+  async changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+      const { currentPassword, newPassword } = req.body;
+
+      // Fetch user from database
+      const result = await query<User>(
+        'SELECT id, email, password FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        sendError(res, 'User not found', 404);
+        return;
+      }
+
+      const user = result.rows[0];
+
+      // Verify current password
+      const isCurrentPasswordValid = await comparePassword(currentPassword, user.password);
+
+      if (!isCurrentPasswordValid) {
+        sendError(res, 'Current password is incorrect', 401);
+        return;
+      }
+
+      // Prevent reuse of current password
+      const isSamePassword = await comparePassword(newPassword, user.password);
+
+      if (isSamePassword) {
+        sendError(res, 'New password must be different from current password', 400);
+        return;
+      }
+
+      // Hash new password
+      const hashedPassword = await hashPassword(newPassword);
+
+      // Update password in database
+      await query(
+        'UPDATE users SET password = $1 WHERE id = $2',
+        [hashedPassword, user.id]
+      );
+
+      sendSuccess(res, null, 'Password changed successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new AuthController();

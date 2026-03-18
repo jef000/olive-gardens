@@ -2,13 +2,49 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { MapPin, Phone, Mail, Clock, Send } from "lucide-react";
+import api from "@/lib/api";
 
 const Contact = () => {
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    message: "",
+  });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    setIsSubmitting(true);
+    setError(null);
+    
+    try {
+      await api.post("/inquiries/public", {
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        message: formData.message,
+      });
+      setSubmitted(true);
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        message: "",
+      });
+    } catch (err: unknown) {
+      const errorMsg = typeof err === 'object' && err !== null && 'response' in err
+        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+        : null;
+      setError(errorMsg || "Failed to send message. Please try again later.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const fadeIn = {
@@ -72,12 +108,19 @@ const Contact = () => {
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
                 <h2 className="text-3xl font-serif mb-8">Send an Inquiry</h2>
+                {error && (
+                  <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-200">
+                    {error}
+                  </div>
+                )}
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">First Name</label>
                     <input
                       type="text"
                       required
+                      value={formData.firstName}
+                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                       className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
                       placeholder="Jane"
                     />
@@ -87,6 +130,8 @@ const Contact = () => {
                     <input
                       type="text"
                       required
+                      value={formData.lastName}
+                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                       className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
                       placeholder="Doe"
                     />
@@ -97,6 +142,8 @@ const Contact = () => {
                   <input
                     type="email"
                     required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
                     placeholder="jane@example.com"
                   />
@@ -105,6 +152,8 @@ const Contact = () => {
                   <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Phone Number (Optional)</label>
                   <input
                     type="tel"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
                     placeholder="+254 700 000 000"
                   />
@@ -114,15 +163,18 @@ const Contact = () => {
                   <textarea
                     required
                     rows={6}
+                    value={formData.message}
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300 resize-none"
                     placeholder="Tell us about your event, preferred dates, or specific requirements..."
                   />
                 </div>
                 <button 
                   type="submit" 
-                  className="w-full py-4 bg-black text-white rounded-full font-medium hover:bg-primary transition-colors duration-300 flex items-center justify-center gap-2 mt-4"
+                  disabled={isSubmitting}
+                  className="w-full py-4 bg-black text-white rounded-full font-medium hover:bg-primary transition-colors duration-300 flex items-center justify-center gap-2 mt-4 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Send Message
+                  {isSubmitting ? "Sending..." : "Send Message"}
                 </button>
               </form>
             )}

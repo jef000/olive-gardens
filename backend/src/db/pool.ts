@@ -36,7 +36,7 @@ pool.on('error', (err) => {
 /**
  * Execute a query with automatic connection management
  */
-export const query = async <T = unknown>(
+export const query = async <T extends import('pg').QueryResultRow = any>(
   text: string,
   params?: unknown[]
 ): Promise<QueryResult<T>> => {
@@ -70,7 +70,7 @@ export const getClient = async (): Promise<PoolClient> => {
 export const testConnection = async (): Promise<boolean> => {
   try {
     const result = await query('SELECT NOW()');
-    console.log('✅ Database connected successfully at:', result.rows[0].now);
+    console.log('✅ Database connected successfully at:', (result.rows[0] as any).now);
     return true;
   } catch (error) {
     console.error('❌ Database connection failed:', error);

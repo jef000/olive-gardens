@@ -101,7 +101,7 @@ function extractResourceId(req: Request): string | undefined {
 /**
  * Middleware to initialize audit context at the start of request
  */
-export const auditContextMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+export const auditContextMiddleware = (req: Request, _res: Response, next: NextFunction): void => {
   // Initialize audit context
   req.auditContext = {
     startTime: Date.now(),

@@ -63,6 +63,34 @@ CREATE TRIGGER update_bookings_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
+-- INQUIRIES TABLE
+-- ============================================
+DROP TABLE IF EXISTS inquiries CASCADE;
+
+CREATE TABLE inquiries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  phone VARCHAR(20),
+  message TEXT NOT NULL,
+  status VARCHAR(50) DEFAULT 'new' CHECK (status IN ('new', 'read', 'replied', 'archived')),
+  
+  -- Timestamps
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_inquiries_email ON inquiries(email);
+CREATE INDEX idx_inquiries_status ON inquiries(status);
+
+DROP TRIGGER IF EXISTS update_inquiries_updated_at ON inquiries;
+CREATE TRIGGER update_inquiries_updated_at
+  BEFORE UPDATE ON inquiries
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
 -- GALLERY TABLE
 -- ============================================
 DROP TABLE IF EXISTS gallery_images CASCADE;
