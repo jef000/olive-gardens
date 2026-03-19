@@ -5,6 +5,12 @@ export interface User {
   role: 'user' | 'admin' | 'moderator';
   reset_token: string | null;
   reset_token_expiry: Date | null;
+  is_temporary_password: boolean;
+  temp_password_expires_at: Date | null;
+  must_change_password: boolean;
+  password_changed_at: Date | null;
+  failed_login_attempts: number;
+  account_locked_until: Date | null;
   created_at: Date;
   updated_at: Date;
 }

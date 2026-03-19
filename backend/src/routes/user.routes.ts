@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import userController from '../controllers/user.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { validate } from '../middleware/validate';
+import { createUserSchema } from '../validators/user.validator';
 
 const router = Router();
 
@@ -33,6 +35,7 @@ router.post(
   '/',
   authenticate,
   authorize('admin'),
+  validate(createUserSchema),
   userController.createUser.bind(userController)
 );
 
@@ -50,6 +53,14 @@ router.put(
   authenticate,
   authorize('admin'),
   userController.updateUser.bind(userController)
+);
+
+// POST /users/:id/resend-temporary-password - Resend temporary password (Admin only)
+router.post(
+  '/:id/resend-temporary-password',
+  authenticate,
+  authorize('admin'),
+  userController.resendTemporaryPassword.bind(userController)
 );
 
 // DELETE /users/:id - Delete user (Admin only)

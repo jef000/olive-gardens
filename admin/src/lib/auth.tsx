@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     });
 
-    const { user: userData, token } = response.data.data;
+    const { user: userData, token, must_change_password } = response.data.data;
 
     if (userData.role !== 'admin' && userData.role !== 'moderator') {
       throw new Error('Access denied. Admin privileges required.');
@@ -57,7 +57,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('admin_token', token);
     localStorage.setItem('admin_user', JSON.stringify(userData));
     setUser(userData);
-    navigate('/');
+
+    // Check if user must change password on first login
+    if (must_change_password) {
+      navigate('/change-password', { 
+        state: { 
+          message: 'You must change your temporary password before continuing.',
+          isRequired: true 
+        } 
+      });
+    } else {
+      navigate('/');
+    }
   };
 
   const logout = () => {

@@ -23,8 +23,8 @@ const envSchema = z.object({
   BCRYPT_ROUNDS: z.string().default('12'),
   
   EMAIL_HOST: z.string().default('smtp.gmail.com'),
-  EMAIL_PORT: z.string().default('587'),
-  EMAIL_SECURE: z.string().default('false'),
+  EMAIL_PORT: z.string().transform(val => parseInt(val, 10)).default('587'),
+  EMAIL_SECURE: z.string().transform(val => val === 'true').default('false'),
   EMAIL_USER: z.string().optional(),
   EMAIL_PASSWORD: z.string().optional(),
   EMAIL_FROM: z.string().default('noreply@olivegarden.com'),
@@ -83,8 +83,8 @@ export const config = {
   
   email: {
     host: env.EMAIL_HOST,
-    port: parseInt(env.EMAIL_PORT, 10),
-    secure: env.EMAIL_SECURE === 'true',
+    port: env.EMAIL_PORT,
+    secure: env.EMAIL_SECURE,
     user: env.EMAIL_USER,
     password: env.EMAIL_PASSWORD,
     from: env.EMAIL_FROM,

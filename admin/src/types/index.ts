@@ -11,6 +11,8 @@ export interface AuthResponse {
   data: {
     user: User;
     token: string;
+    must_change_password?: boolean;
+    message?: string;
   };
 }
 

@@ -5,8 +5,9 @@ import { hashPassword, comparePassword } from '../utils/password';
 import { generateToken } from '../utils/jwt';
 import { sendSuccess, sendError } from '../utils/response';
 import { generateResetToken, hashResetToken, getResetTokenExpiry } from '../utils/crypto';
-import { sendPasswordResetEmail } from '../utils/email';
+import { sendPasswordResetEmail, sendPasswordChangeConfirmationEmail } from '../utils/email';
 import { sanitizeEmail } from '../utils/sanitize';
+import { isTempPasswordExpired, isAccountLocked, getAccountLockDuration } from '../utils/tempPassword';
 
 /**
  * Authentication Controller
@@ -83,7 +84,8 @@ export class AuthController {
    * Login user
    * POST /auth/login
    * 
-   * Security: Constant-time password comparison, rate limited
+   * Security: Constant-time password comparison, rate limited, account locking
+   * Handles temporary password expiration and forces password change on first login
    */
   async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -101,18 +103,83 @@ export class AuthController {
 
       const user = result.rows[0];
 
+      // Check if account is locked
+      if (isAccountLocked(user.account_locked_until)) {
+        const lockUntil = new Date(user.account_locked_until!);
+        const minutesRemaining = Math.ceil((lockUntil.getTime() - Date.now()) / 60000);
+        sendError(
+          res,
+          `Account is locked due to multiple failed login attempts. Please try again in ${minutesRemaining} minutes.`,
+          403
+        );
+        return;
+      }
+
+      // Check if temporary password has expired
+      if (user.is_temporary_password && isTempPasswordExpired(user.temp_password_expires_at)) {
+        sendError(
+          res,
+          'Temporary password has expired. Please contact your administrator to request a new temporary password.',
+          401
+        );
+        return;
+      }
+
       const isPasswordValid = await comparePassword(password, user.password);
 
       if (!isPasswordValid) {
-        sendError(res, 'Invalid credentials', 401);
+        // Increment failed login attempts
+        const newFailedAttempts = user.failed_login_attempts + 1;
+        const lockUntil = getAccountLockDuration(newFailedAttempts);
+
+        await query(
+          `UPDATE users 
+           SET failed_login_attempts = $1, account_locked_until = $2 
+           WHERE id = $3`,
+          [newFailedAttempts, lockUntil, user.id]
+        );
+
+        if (lockUntil) {
+          sendError(
+            res,
+            'Invalid credentials. Account has been locked due to multiple failed attempts.',
+            401
+          );
+        } else {
+          sendError(res, 'Invalid credentials', 401);
+        }
         return;
       }
+
+      // Reset failed login attempts on successful login
+      await query(
+        `UPDATE users 
+         SET failed_login_attempts = 0, account_locked_until = NULL 
+         WHERE id = $1`,
+        [user.id]
+      );
 
       const token = generateToken({
         userId: user.id,
         email: user.email,
         role: user.role,
       });
+
+      // Check if user must change password
+      if (user.must_change_password || user.is_temporary_password) {
+        sendSuccess(res, {
+          user: {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            created_at: user.created_at,
+          },
+          token,
+          must_change_password: true,
+          message: 'Login successful. You must change your password before continuing.',
+        });
+        return;
+      }
 
       sendSuccess(res, {
         user: {
@@ -291,10 +358,12 @@ export class AuthController {
    * Security Considerations:
    * - Requires authentication (user must be logged in)
    * - Verifies current password before allowing change
-   * - Prevents reuse of current password
+   * - Prevents reuse of current password (including temporary password)
    * - Enforces strong password requirements
    * - Hashes new password with bcrypt
    * - Rate-limited to prevent brute force
+   * - Clears temporary password flags on successful change
+   * - Sends confirmation email for security awareness
    */
   async changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -303,7 +372,7 @@ export class AuthController {
 
       // Fetch user from database
       const result = await query<User>(
-        'SELECT id, email, password FROM users WHERE id = $1',
+        'SELECT id, email, password, is_temporary_password, must_change_password FROM users WHERE id = $1',
         [userId]
       );
 
@@ -322,7 +391,7 @@ export class AuthController {
         return;
       }
 
-      // Prevent reuse of current password
+      // Prevent reuse of current password (including temporary password)
       const isSamePassword = await comparePassword(newPassword, user.password);
 
       if (isSamePassword) {
@@ -333,11 +402,25 @@ export class AuthController {
       // Hash new password
       const hashedPassword = await hashPassword(newPassword);
 
-      // Update password in database
+      // Update password and clear temporary password flags
       await query(
-        'UPDATE users SET password = $1 WHERE id = $2',
+        `UPDATE users 
+         SET password = $1, 
+             is_temporary_password = FALSE, 
+             must_change_password = FALSE, 
+             temp_password_expires_at = NULL,
+             password_changed_at = NOW()
+         WHERE id = $2`,
         [hashedPassword, user.id]
       );
+
+      // Send confirmation email (non-blocking)
+      try {
+        await sendPasswordChangeConfirmationEmail(user.email);
+      } catch (emailError) {
+        console.error('Failed to send password change confirmation email:', emailError);
+        // Continue even if email fails
+      }
 
       sendSuccess(res, null, 'Password changed successfully');
     } catch (error) {

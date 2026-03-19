@@ -18,6 +18,14 @@ CREATE TABLE users (
   reset_token TEXT,
   reset_token_expiry TIMESTAMP,
 
+  -- Temporary password onboarding fields
+  is_temporary_password BOOLEAN DEFAULT FALSE,
+  temp_password_expires_at TIMESTAMP,
+  must_change_password BOOLEAN DEFAULT FALSE,
+  password_changed_at TIMESTAMP,
+  failed_login_attempts INTEGER DEFAULT 0,
+  account_locked_until TIMESTAMP,
+
   -- Timestamps
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

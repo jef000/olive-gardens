@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import { query } from '../db/pool';
 import { User, UserResponse } from '../types/user';
-import { sendSuccess, sendError } from '../utils/response';
 import { hashPassword } from '../utils/password';
+import { sendSuccess, sendError } from '../utils/response';
 import { sanitizeEmail } from '../utils/sanitize';
+import { generateTemporaryPassword, getTempPasswordExpiry } from '../utils/tempPassword';
+import { sendTemporaryPasswordEmail } from '../utils/email';
 import notificationService from '../services/notification.service';
 
 /**
@@ -99,13 +101,21 @@ export class UserController {
   /**
    * Create new user (Admin only)
    * POST /api/users
+   * 
+   * Security:
+   * - Generates secure temporary password
+   * - Sends temporary password via email
+   * - Sets expiration time (24 hours by default)
+   * - Forces password change on first login
+   * - Logs user creation event
    */
   async createUser(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { email, password, role = 'user' } = req.body;
+      const { email, role = 'user', expiryHours = 24 } = req.body;
 
       const sanitizedEmail = sanitizeEmail(email);
 
+      // Check if user already exists
       const existingUser = await query<User>(
         'SELECT id FROM users WHERE email = $1',
         [sanitizedEmail]
@@ -116,16 +126,53 @@ export class UserController {
         return;
       }
 
-      const hashedPassword = await hashPassword(password);
+      // Generate secure temporary password
+      const temporaryPassword = generateTemporaryPassword();
+      const hashedPassword = await hashPassword(temporaryPassword);
+      const tempPasswordExpiry = getTempPasswordExpiry(expiryHours);
 
+      // Create user with temporary password flags
       const result = await query<UserResponse>(
-        `INSERT INTO users (email, password, role) 
-         VALUES ($1, $2, $3) 
+        `INSERT INTO users (
+          email, 
+          password, 
+          role, 
+          is_temporary_password, 
+          temp_password_expires_at, 
+          must_change_password
+        ) 
+         VALUES ($1, $2, $3, TRUE, $4, TRUE) 
          RETURNING id, email, role, created_at`,
-        [sanitizedEmail, hashedPassword, role]
+        [sanitizedEmail, hashedPassword, role, tempPasswordExpiry]
       );
 
-      sendSuccess(res, { user: result.rows[0] }, 'User created successfully', 201);
+      const newUser = result.rows[0];
+
+      // Send temporary password via email
+      try {
+        await sendTemporaryPasswordEmail(sanitizedEmail, temporaryPassword, expiryHours);
+        console.log(`✅ User created: ${sanitizedEmail} (ID: ${newUser.id})`);
+      } catch (emailError) {
+        console.error('Failed to send temporary password email:', emailError);
+        // Rollback user creation if email fails
+        await query('DELETE FROM users WHERE id = $1', [newUser.id]);
+        sendError(
+          res,
+          'Failed to send temporary password email. User creation rolled back.',
+          500
+        );
+        return;
+      }
+
+      sendSuccess(
+        res,
+        { 
+          user: newUser,
+          message: `User created successfully. Temporary password sent to ${sanitizedEmail}`,
+        },
+        'User created successfully',
+        201
+      );
     } catch (error) {
       next(error);
     }
@@ -207,6 +254,79 @@ export class UserController {
       );
 
       sendSuccess(res, { user: result.rows[0] }, 'User updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Resend temporary password (Admin only)
+   * POST /api/users/:id/resend-temporary-password
+   * 
+   * Security:
+   * - Generates new secure temporary password
+   * - Invalidates previous temporary password
+   * - Resets expiration time
+   * - Sends new password via email
+   * - Logs password resend event
+   */
+  async resendTemporaryPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { expiryHours = 24 } = req.body;
+
+      // Fetch user
+      const userResult = await query<User>(
+        'SELECT id, email, is_temporary_password FROM users WHERE id = $1',
+        [id]
+      );
+
+      if (userResult.rows.length === 0) {
+        sendError(res, 'User not found', 404);
+        return;
+      }
+
+      const user = userResult.rows[0];
+
+      // Generate new temporary password
+      const temporaryPassword = generateTemporaryPassword();
+      const hashedPassword = await hashPassword(temporaryPassword);
+      const tempPasswordExpiry = getTempPasswordExpiry(expiryHours);
+
+      // Update user with new temporary password
+      await query(
+        `UPDATE users 
+         SET password = $1, 
+             is_temporary_password = TRUE, 
+             temp_password_expires_at = $2, 
+             must_change_password = TRUE,
+             failed_login_attempts = 0,
+             account_locked_until = NULL
+         WHERE id = $3`,
+        [hashedPassword, tempPasswordExpiry, user.id]
+      );
+
+      // Send new temporary password via email
+      try {
+        await sendTemporaryPasswordEmail(user.email, temporaryPassword, expiryHours);
+        console.log(`✅ Temporary password resent to: ${user.email} (ID: ${user.id})`);
+      } catch (emailError) {
+        console.error('Failed to send temporary password email:', emailError);
+        sendError(
+          res,
+          'Failed to send temporary password email. Please try again.',
+          500
+        );
+        return;
+      }
+
+      sendSuccess(
+        res,
+        { 
+          message: `New temporary password sent to ${user.email}`,
+        },
+        'Temporary password resent successfully'
+      );
     } catch (error) {
       next(error);
     }
