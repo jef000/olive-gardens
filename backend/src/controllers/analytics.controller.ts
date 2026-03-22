@@ -345,6 +345,30 @@ export class AnalyticsController {
       next(error);
     }
   }
+
+  /**
+   * Get sidebar metrics (counts for badges)
+   * GET /api/analytics/sidebar
+   * Security: Admin and moderator only
+   */
+  async getSidebarMetrics(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const pendingBookings = await query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM bookings WHERE status = 'pending'`
+      );
+
+      const newInquiries = await query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM inquiries WHERE status = 'new'`
+      );
+
+      sendSuccess(res, {
+        pending_bookings: parseInt(pendingBookings.rows[0].count),
+        new_inquiries: parseInt(newInquiries.rows[0].count),
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default new AnalyticsController();

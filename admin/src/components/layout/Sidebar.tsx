@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { 
   LayoutDashboard, 
   Users, 
@@ -13,12 +14,19 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import api from '@/lib/api';
+import type { ApiResponse } from '@/types';
+
+interface SidebarMetrics {
+  pending_bookings: number;
+  new_inquiries: number;
+}
 
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Users', href: '/users', icon: Users },
-  { name: 'Bookings', href: '/bookings', icon: Calendar },
-  { name: 'Inquiries', href: '/inquiries', icon: MessageSquare },
+  { name: 'Bookings', href: '/bookings', icon: Calendar, badgeKey: 'pending_bookings' },
+  { name: 'Inquiries', href: '/inquiries', icon: MessageSquare, badgeKey: 'new_inquiries' },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Gallery', href: '/gallery', icon: Image },
   { name: 'Notifications', href: '/notifications', icon: Bell },
@@ -28,6 +36,22 @@ const navigation = [
 export default function Sidebar() {
   const location = useLocation();
   const { user, logout } = useAuth();
+  
+  const { data: metrics } = useQuery({
+    queryKey: ['sidebar', 'metrics'],
+    queryFn: async () => {
+      const response = await api.get<ApiResponse<SidebarMetrics>>('/analytics/sidebar');
+      return response.data.data;
+    },
+    // Refresh sidebar metrics every 30 seconds
+    refetchInterval: 30000,
+  });
+
+  const getBadgeCount = (key?: string) => {
+    if (!key || !metrics) return null;
+    const count = metrics[key as keyof SidebarMetrics];
+    return count > 0 ? count : null;
+  };
 
   return (
     <div className="flex flex-col w-64 bg-white text-gray-700 h-screen fixed left-0 top-0 border-r border-gray-200 shadow-sm z-20">
@@ -45,22 +69,36 @@ export default function Sidebar() {
         <nav className="space-y-1">
           {navigation.map((item) => {
             const isActive = location.pathname === item.href;
+            const badgeCount = getBadgeCount(item.badgeKey);
+            
             return (
               <Link
                 key={item.name}
                 to={item.href}
                 className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group',
-                  isActive
-                    ? 'bg-[#8b9172]/10 text-[#8b9172] font-medium'
+                  'flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-200 group',
+                  isActive 
+                    ? 'bg-[#8b9172]/10 text-[#8b9172] font-medium' 
                     : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
                 )}
               >
-                <item.icon className={cn(
-                  "w-5 h-5 transition-colors",
-                  isActive ? "text-[#8b9172]" : "text-gray-400 group-hover:text-gray-600"
-                )} />
-                <span>{item.name}</span>
+                <div className="flex items-center gap-3">
+                  <item.icon className={cn(
+                    "w-5 h-5 transition-colors",
+                    isActive ? "text-[#8b9172]" : "text-gray-400 group-hover:text-gray-600"
+                  )} />
+                  <span>{item.name}</span>
+                </div>
+                {badgeCount && (
+                  <span className={cn(
+                    "px-2 py-0.5 text-xs font-bold rounded-full",
+                    isActive 
+                      ? "bg-[#8b9172] text-white" 
+                      : "bg-amber-100 text-amber-700 group-hover:bg-amber-200"
+                  )}>
+                    {badgeCount > 99 ? '99+' : badgeCount}
+                  </span>
+                )}
               </Link>
             );
           })}

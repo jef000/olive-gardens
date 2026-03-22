@@ -57,4 +57,12 @@ router.get(
   analyticsController.getDashboardMetrics.bind(analyticsController)
 );
 
+// GET /analytics/sidebar - Get sidebar badge counts
+router.get(
+  '/sidebar',
+  authenticate,
+  authorize('admin', 'moderator'),
+  analyticsController.getSidebarMetrics.bind(analyticsController)
+);
+
 export default router;
