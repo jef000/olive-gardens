@@ -10,14 +10,17 @@ interface DashboardMetrics {
   current_month: {
     bookings: number;
     revenue: number;
+    inquiries: number;
   };
   last_month: {
     bookings: number;
     revenue: number;
+    inquiries: number;
   };
   growth: {
     bookings: number;
     revenue: number;
+    inquiries: number;
   };
   upcoming_bookings: number;
   pending_bookings: number;
@@ -74,10 +77,10 @@ export default function Dashboard() {
   const stats = [
     {
       title: 'Total Inquiries',
-      value: dashboardData?.current_month.bookings.toString() || '0',
+      value: dashboardData?.current_month.inquiries.toString() || '0',
       icon: Users,
-      change: `${(dashboardData?.growth.bookings || 0) > 0 ? '+' : ''}${(dashboardData?.growth.bookings || 0).toFixed(1)}%`,
-      changeType: (dashboardData?.growth.bookings || 0) >= 0 ? 'positive' : 'negative',
+      change: `${(dashboardData?.growth.inquiries || 0) > 0 ? '+' : ''}${(dashboardData?.growth.inquiries || 0).toFixed(1)}%`,
+      changeType: (dashboardData?.growth.inquiries || 0) >= 0 ? 'positive' : 'negative',
       description: 'from last month',
     },
     {

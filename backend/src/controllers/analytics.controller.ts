@@ -297,6 +297,19 @@ export class AnalyticsController {
         WHERE status = 'pending'`
       );
 
+      const currentMonthInquiries = await query<{ count: string }>(
+        `SELECT COUNT(*) as count
+        FROM inquiries
+        WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE)`
+      );
+
+      const lastMonthInquiries = await query<{ count: string }>(
+        `SELECT COUNT(*) as count
+        FROM inquiries
+        WHERE created_at >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
+          AND created_at < DATE_TRUNC('month', CURRENT_DATE)`
+      );
+
       const currentCount = parseInt(currentMonthBookings.rows[0].count);
       const lastCount = parseInt(lastMonthBookings.rows[0].count);
       const bookingGrowth = lastCount > 0 ? ((currentCount - lastCount) / lastCount) * 100 : 0;
@@ -305,18 +318,25 @@ export class AnalyticsController {
       const lastRevenue = parseFloat(lastMonthBookings.rows[0].revenue);
       const revenueGrowth = lastRevenue > 0 ? ((currentRevenue - lastRevenue) / lastRevenue) * 100 : 0;
 
+      const currentInquiriesCount = parseInt(currentMonthInquiries.rows[0].count);
+      const lastInquiriesCount = parseInt(lastMonthInquiries.rows[0].count);
+      const inquiriesGrowth = lastInquiriesCount > 0 ? ((currentInquiriesCount - lastInquiriesCount) / lastInquiriesCount) * 100 : 0;
+
       sendSuccess(res, {
         current_month: {
           bookings: currentCount,
           revenue: currentRevenue,
+          inquiries: currentInquiriesCount,
         },
         last_month: {
           bookings: lastCount,
           revenue: lastRevenue,
+          inquiries: lastInquiriesCount,
         },
         growth: {
           bookings: Math.round(bookingGrowth * 10) / 10,
           revenue: Math.round(revenueGrowth * 10) / 10,
+          inquiries: Math.round(inquiriesGrowth * 10) / 10,
         },
         upcoming_bookings: parseInt(upcomingBookings.rows[0].count),
         pending_bookings: parseInt(pendingBookings.rows[0].count),
