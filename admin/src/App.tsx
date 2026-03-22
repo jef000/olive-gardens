@@ -15,6 +15,7 @@ import Bookings from './pages/Bookings';
 import Analytics from './pages/Analytics';
 import Gallery from './pages/Gallery';
 import Notifications from './pages/Notifications';
+import Inquiries from './pages/Inquiries';
 import Settings from './pages/Settings';
 
 const queryClient = new QueryClient();
@@ -107,6 +108,16 @@ function App() {
                 <ProtectedRoute>
                   <AppLayout>
                     <Notifications />
+                  </AppLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/inquiries"
+              element={
+                <ProtectedRoute>
+                  <AppLayout>
+                    <Inquiries />
                   </AppLayout>
                 </ProtectedRoute>
               }

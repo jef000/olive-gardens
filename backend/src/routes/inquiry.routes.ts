@@ -1,9 +1,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { body, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 import { sendSuccess, sendError } from '../utils/response';
 import { query } from '../db/pool';
 import DOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
+import { authenticate, authorize } from '../middleware/auth.middleware';
+import { inquiryController } from '../controllers/inquiry.controller';
 
 const router = Router();
 const window = new JSDOM('').window;
@@ -57,6 +59,72 @@ router.post(
       next(error);
     }
   }
+);
+
+/**
+ * Admin Routes (Protected)
+ */
+
+// GET /api/inquiries
+router.get(
+  '/',
+  authenticate,
+  authorize('admin', 'moderator'),
+  inquiryController.getInquiries
+);
+
+// GET /api/inquiries/:id
+router.get(
+  '/:id',
+  authenticate,
+  authorize('admin', 'moderator'),
+  [param('id').isUUID().withMessage('Invalid ID format')],
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, 'Validation error', 400, errors.array() as any);
+      return;
+    }
+    next();
+  },
+  inquiryController.getInquiry
+);
+
+// PATCH /api/inquiries/:id/status
+router.patch(
+  '/:id/status',
+  authenticate,
+  authorize('admin', 'moderator'),
+  [
+    param('id').isUUID().withMessage('Invalid ID format'),
+    body('status').isIn(['new', 'read', 'replied', 'archived']).withMessage('Invalid status')
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, 'Validation error', 400, errors.array() as any);
+      return;
+    }
+    next();
+  },
+  inquiryController.updateStatus
+);
+
+// DELETE /api/inquiries/:id
+router.delete(
+  '/:id',
+  authenticate,
+  authorize('admin'),
+  [param('id').isUUID().withMessage('Invalid ID format')],
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, 'Validation error', 400, errors.array() as any);
+      return;
+    }
+    next();
+  },
+  inquiryController.deleteInquiry
 );
 
 export default router;

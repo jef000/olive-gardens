@@ -8,7 +8,8 @@ import {
   Bell,
   Settings,
   LogOut,
-  Leaf
+  Leaf,
+  MessageSquare
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -17,6 +18,7 @@ const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Users', href: '/users', icon: Users },
   { name: 'Bookings', href: '/bookings', icon: Calendar },
+  { name: 'Inquiries', href: '/inquiries', icon: MessageSquare },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Gallery', href: '/gallery', icon: Image },
   { name: 'Notifications', href: '/notifications', icon: Bell },

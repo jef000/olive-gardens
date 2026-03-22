@@ -5,6 +5,18 @@ export interface User {
   created_at: string;
 }
 
+export interface Inquiry {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  message: string;
+  status: 'new' | 'read' | 'replied' | 'archived';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AuthResponse {
   success: boolean;
   message: string;
