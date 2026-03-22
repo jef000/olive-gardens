@@ -340,6 +340,24 @@ export class NotificationService {
       data: { imageTitle, album, uploadedBy },
     });
   }
+  /**
+   * Helper: Create inquiry notification
+   */
+  async notifyInquiryEvent(
+    inquiryId: string,
+    customerName: string,
+    customerEmail: string
+  ): Promise<Notification[]> {
+    return this.createBroadcastNotification({
+      type: 'inquiry_received',
+      priority: 'medium',
+      title: 'New Inquiry Received',
+      message: `New message from ${customerName} (${customerEmail})`,
+      resource_type: 'inquiry',
+      resource_id: inquiryId,
+      data: { customerName, customerEmail },
+    });
+  }
 }
 
 export default new NotificationService();

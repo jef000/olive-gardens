@@ -11,6 +11,7 @@ export type NotificationType =
   | 'user_deleted'
   | 'gallery_upload'
   | 'gallery_deleted'
+  | 'inquiry_received'
   | 'system_alert'
   | 'admin_action';
 

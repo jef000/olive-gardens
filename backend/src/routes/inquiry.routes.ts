@@ -53,8 +53,19 @@ router.post(
       );
 
       // In a real app, we might want to trigger an email notification to admins here.
+      const inquiryId = (result.rows[0] as any).id;
+      
+      // Notify admins about the new inquiry
+      import('../services/notification.service').then(module => {
+        const notificationService = module.default;
+        notificationService.notifyInquiryEvent(
+          inquiryId,
+          `${first_name} ${last_name}`,
+          email
+        ).catch(err => console.error('Failed to send inquiry notification:', err));
+      });
 
-      sendSuccess(res, { inquiryId: (result.rows[0] as any).id }, 'Inquiry sent successfully', 201);
+      sendSuccess(res, { inquiryId }, 'Inquiry sent successfully', 201);
     } catch (error) {
       next(error);
     }

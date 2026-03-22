@@ -29,6 +29,7 @@ const typeLabels: Record<NotificationType, string> = {
   user_deleted: 'User Deleted',
   gallery_upload: 'Gallery Upload',
   gallery_deleted: 'Gallery Deleted',
+  inquiry_received: 'New Inquiry',
   system_alert: 'System Alert',
   admin_action: 'Admin Action',
 };
@@ -199,6 +200,7 @@ export default function Notifications() {
                   <SelectItem value="booking_created">Booking Created</SelectItem>
                   <SelectItem value="booking_confirmed">Booking Confirmed</SelectItem>
                   <SelectItem value="booking_cancelled">Booking Cancelled</SelectItem>
+                  <SelectItem value="inquiry_received">New Inquiry</SelectItem>
                   <SelectItem value="user_created">User Created</SelectItem>
                   <SelectItem value="gallery_upload">Gallery Upload</SelectItem>
                 </SelectContent>
