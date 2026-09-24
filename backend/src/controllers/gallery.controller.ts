@@ -1,8 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import { query } from '../db/pool';
-import { GalleryImage, CreateGalleryImageDTO, UpdateGalleryImageDTO, GalleryFilters } from '../types/gallery';
+import {
+  GalleryImage,
+  CreateGalleryImageDTO,
+  UpdateGalleryImageDTO,
+  GalleryFilters,
+} from '../types/gallery';
 import { sendSuccess, sendError } from '../utils/response';
 import notificationService from '../services/notification.service';
+import { safeNotify } from '../utils/safeNotify';
+import { processUploadedImage } from '../services/imageProcessing.service';
+import { sanitizeText } from '../utils/sanitizer';
 
 export class GalleryController {
   /**
@@ -10,17 +18,22 @@ export class GalleryController {
    * GET /api/gallery
    * Security: Public or authenticated based on is_published
    */
+  /**
+   * Columns safe to expose on the public gallery API. Anonymous callers must
+   * not receive uploader IDs or moderation flags.
+   */
+  private static readonly PUBLIC_IMAGE_COLUMNS =
+    'id, title, alt_text, description, url, thumbnail_url, album, category, tags, width, height, is_featured, created_at';
+
+  private static imageColumns(req: Request): string {
+    return req.user ? '*' : GalleryController.PUBLIC_IMAGE_COLUMNS;
+  }
+
   async getAllImages(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const {
-        album,
-        category,
-        is_featured,
-        is_published,
-        search,
-      } = req.query as GalleryFilters;
+      const { album, category, is_featured, is_published, search } = req.query as GalleryFilters;
 
-      let queryText = 'SELECT * FROM gallery_images WHERE 1=1';
+      let queryText = `SELECT ${GalleryController.imageColumns(req)} FROM gallery_images WHERE 1=1`;
       const queryParams: any[] = [];
       let paramCount = 1;
 
@@ -58,13 +71,24 @@ export class GalleryController {
         paramCount++;
       }
 
-      queryText += ' ORDER BY is_featured DESC, created_at DESC';
+      const countResult = await query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM gallery_images WHERE ${queryText.split(' WHERE ')[1]}`,
+        queryParams
+      );
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
+      const offset = (page - 1) * limit;
+      queryText += ` ORDER BY is_featured DESC, created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+      queryParams.push(limit, offset);
 
       const result = await query<GalleryImage>(queryText, queryParams);
 
       sendSuccess(res, {
         images: result.rows,
-        total: result.rows.length,
+        total: Number(countResult.rows[0]?.count || 0),
+        page,
+        limit,
+        has_more: offset + result.rows.length < Number(countResult.rows[0]?.count || 0),
       });
     } catch (error) {
       next(error);
@@ -79,7 +103,7 @@ export class GalleryController {
     try {
       const { id } = req.params;
 
-      let queryText = 'SELECT * FROM gallery_images WHERE id = $1';
+      let queryText = `SELECT ${GalleryController.imageColumns(req)} FROM gallery_images WHERE id = $1`;
       const queryParams: any[] = [id];
 
       if (!req.user) {
@@ -107,7 +131,7 @@ export class GalleryController {
     try {
       const { album } = req.params;
 
-      let queryText = 'SELECT * FROM gallery_images WHERE album = $1';
+      let queryText = `SELECT ${GalleryController.imageColumns(req)} FROM gallery_images WHERE album = $1`;
       const queryParams: any[] = [album];
 
       if (!req.user) {
@@ -140,46 +164,74 @@ export class GalleryController {
         return;
       }
 
-      const { title, description, album, category, tags, is_featured, is_published } = req.body;
+      const { title, alt_text, description, album, category, tags, is_featured, is_published } =
+        req.body;
       const userId = req.user?.userId;
+      const processed = await processUploadedImage(req.file.path, req.file.filename);
+      const safeTitle = sanitizeText(title || req.file.originalname);
+      const safeAltText = (
+        sanitizeText(alt_text || title || req.file.originalname) || 'Gallery image'
+      ).slice(0, 125);
+      const safeDescription = sanitizeText(description || '');
+      const safeAlbum = sanitizeText(album || 'Other') || 'Other';
+      const safeCategory = sanitizeText(category || 'General') || 'General';
 
       // Construct URL paths based on the file saved by multer
       // In a real production app, this would upload to S3/Cloudinary and get their URLs
-      const url = `/uploads/${req.file.filename}`;
-      const thumbnailUrl = url; // For MVP, using same image for thumbnail
+      const url = processed.large;
+      const thumbnailUrl = processed.thumbnail;
+
+      await query(
+        `INSERT INTO file_uploads (
+          user_id, original_filename, stored_filename, file_size, mime_type,
+          magic_number_validated, malware_scanned, upload_ip
+        ) VALUES ($1, $2, $3, $4, $5, TRUE, FALSE, $6)`,
+        [
+          userId,
+          req.file.originalname,
+          req.file.filename,
+          req.file.size,
+          req.file.mimetype,
+          req.ip || null,
+        ]
+      );
 
       const result = await query<GalleryImage>(
         `INSERT INTO gallery_images (
-          title, description, url, thumbnail_url, album, category, tags,
+          title, alt_text, description, url, thumbnail_url, album, category, tags,
           file_size, file_type, width, height, is_featured, is_published, uploaded_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING *`,
         [
-          title || req.file.originalname,
-          description || '',
+          safeTitle,
+          safeAltText,
+          safeDescription,
           url,
           thumbnailUrl,
-          album || 'Other',
-          category || 'General',
+          safeAlbum,
+          safeCategory,
           tags ? (typeof tags === 'string' ? JSON.parse(tags) : tags) : [],
           req.file.size,
           req.file.mimetype,
-          0, // Would need image processing library to get actual dimensions
-          0,
+          processed.width,
+          processed.height,
           is_featured === 'true' || is_featured === true,
-          is_published !== undefined ? (is_published === 'true' || is_published === true) : true,
+          is_published !== undefined ? is_published === 'true' || is_published === true : true,
           userId,
         ]
       );
 
       // Notify admins about new upload
-      await notificationService.notifyGalleryEvent(
-        'gallery_upload',
-        result.rows[0].id,
-        title || req.file.originalname,
-        album || 'Other',
-        userId || 'Unknown',
-        'low'
+      safeNotify(
+        notificationService.notifyGalleryEvent(
+          'gallery_upload',
+          result.rows[0].id,
+          safeTitle,
+          safeAlbum,
+          userId || 'Unknown',
+          'low'
+        ),
+        'gallery_upload'
       );
 
       sendSuccess(res, { image: result.rows[0] }, 'Image uploaded successfully', 201);
@@ -251,9 +303,21 @@ export class GalleryController {
       const updates: string[] = [];
       const values: any[] = [];
       let paramCount = 1;
+      const allowedFields = new Set([
+        'title',
+        'alt_text',
+        'description',
+        'url',
+        'thumbnail_url',
+        'album',
+        'category',
+        'tags',
+        'is_featured',
+        'is_published',
+      ]);
 
       Object.entries(updateData).forEach(([key, value]) => {
-        if (value !== undefined) {
+        if (allowedFields.has(key) && value !== undefined) {
           updates.push(`${key} = $${paramCount}`);
           values.push(value);
           paramCount++;
@@ -298,13 +362,16 @@ export class GalleryController {
       }
 
       // Notify admins about deletion
-      await notificationService.notifyGalleryEvent(
-        'gallery_deleted',
-        result.rows[0].id,
-        result.rows[0].title,
-        result.rows[0].album,
-        req.user?.userId || 'Unknown',
-        'low'
+      safeNotify(
+        notificationService.notifyGalleryEvent(
+          'gallery_deleted',
+          result.rows[0].id,
+          result.rows[0].title,
+          result.rows[0].album,
+          req.user?.userId || 'Unknown',
+          'low'
+        ),
+        'gallery_deleted'
       );
 
       sendSuccess(res, { image: result.rows[0] }, 'Image deleted successfully');
@@ -320,9 +387,15 @@ export class GalleryController {
    */
   async getGalleryStats(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const totalImagesResult = await query<{ count: string }>('SELECT COUNT(*) as count FROM gallery_images');
-      const publishedImagesResult = await query<{ count: string }>('SELECT COUNT(*) as count FROM gallery_images WHERE is_published = true');
-      const featuredImagesResult = await query<{ count: string }>('SELECT COUNT(*) as count FROM gallery_images WHERE is_featured = true');
+      const totalImagesResult = await query<{ count: string }>(
+        'SELECT COUNT(*) as count FROM gallery_images'
+      );
+      const publishedImagesResult = await query<{ count: string }>(
+        'SELECT COUNT(*) as count FROM gallery_images WHERE is_published = true'
+      );
+      const featuredImagesResult = await query<{ count: string }>(
+        'SELECT COUNT(*) as count FROM gallery_images WHERE is_featured = true'
+      );
 
       const albumBreakdown = await query<{ album: string; count: string }>(
         'SELECT album, COUNT(*) as count FROM gallery_images GROUP BY album ORDER BY count DESC'

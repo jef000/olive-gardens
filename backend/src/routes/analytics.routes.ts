@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import analyticsController from '../controllers/analytics.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { validate } from '../middleware/validate';
+import { trackEventSchema } from '../validators/analytics.validator';
 
 const router = Router();
 
@@ -14,6 +16,7 @@ const router = Router();
 router.post(
   '/track',
   authenticate,
+  validate(trackEventSchema),
   analyticsController.trackEvent.bind(analyticsController)
 );
 

@@ -14,6 +14,54 @@ import {
 } from '../types/audit';
 
 export class AuditService {
+  /** Write the normalized security record used for request correlation and compliance reporting. */
+  static async createDetailedAuditLog(data: {
+    userId?: string;
+    sessionId?: string;
+    requestId: string;
+    operationType: string;
+    resourceType?: string;
+    resourceId?: string;
+    httpMethod: string;
+    endpoint: string;
+    ipAddress?: string;
+    userAgent?: string;
+    statusCode: number;
+    success: boolean;
+    errorMessage?: string;
+    changes?: Record<string, unknown>;
+  }): Promise<void> {
+    try {
+      await query(
+        `INSERT INTO audit_detailed (
+          user_id, session_id, request_id, operation_type, resource_type, resource_id,
+          http_method, endpoint, ip_address, user_agent, status_code, success,
+          error_message, changes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [
+          data.userId || null,
+          data.sessionId || null,
+          data.requestId,
+          data.operationType,
+          data.resourceType || null,
+          data.resourceId || null,
+          data.httpMethod,
+          data.endpoint,
+          data.ipAddress || null,
+          data.userAgent || null,
+          data.statusCode,
+          data.success,
+          data.errorMessage || null,
+          data.changes ? JSON.stringify(data.changes) : null,
+        ]
+      );
+    } catch (error) {
+      // Audit failures must never turn a successful API request into a 500. This also
+      // keeps deployments compatible while the audit_detailed migration is pending.
+      console.error('Failed to create detailed audit log:', error);
+    }
+  }
+
   /**
    * Create a new audit log entry
    */
@@ -231,7 +279,12 @@ export class AuditService {
 
     // Get paginated results
     const offset = (page - 1) * limit;
-    const orderBy = `ORDER BY ${sort_by} ${sort_order.toUpperCase()}`;
+
+    // Never interpolate raw query strings: order by a known column and direction.
+    const sortableColumns = ['timestamp', 'action', 'resource_type', 'resource_id', 'user_email', 'status', 'duration_ms'];
+    const safeSortBy = sortableColumns.includes(sort_by) ? sort_by : 'timestamp';
+    const safeSortOrder = sort_order === 'asc' || sort_order === 'desc' ? sort_order.toUpperCase() : 'DESC';
+    const orderBy = `ORDER BY ${safeSortBy} ${safeSortOrder}`;
 
     const logsResult = await query<AuditLog>(
       `SELECT * FROM audit_logs ${whereClause} ${orderBy} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
@@ -269,6 +322,7 @@ export class AuditService {
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const andPrefix = conditions.length > 0 ? `${whereClause} AND` : 'WHERE';
 
     // Total logs
     const totalResult = await query<{ count: string }>(
@@ -296,7 +350,7 @@ export class AuditService {
 
     // Logs by user
     const userResult = await query<{ user_email: string; count: string }>(
-      `SELECT user_email, COUNT(*) as count FROM audit_logs ${whereClause} AND user_email IS NOT NULL GROUP BY user_email ORDER BY count DESC LIMIT 10`,
+      `SELECT user_email, COUNT(*) as count FROM audit_logs ${andPrefix} user_email IS NOT NULL GROUP BY user_email ORDER BY count DESC LIMIT 10`,
       params
     );
 
@@ -308,7 +362,7 @@ export class AuditService {
 
     // Average duration
     const durationResult = await query<{ avg_duration: string }>(
-      `SELECT AVG(duration_ms) as avg_duration FROM audit_logs ${whereClause} AND duration_ms IS NOT NULL`,
+      `SELECT AVG(duration_ms) as avg_duration FROM audit_logs ${andPrefix} duration_ms IS NOT NULL`,
       params
     );
 
@@ -318,10 +372,12 @@ export class AuditService {
         action: row.action,
         count: parseInt(row.count),
       })),
-      logs_by_resource: resourceResult.rows.map((row: { resource_type: string; count: string }) => ({
-        resource_type: row.resource_type,
-        count: parseInt(row.count),
-      })),
+      logs_by_resource: resourceResult.rows.map(
+        (row: { resource_type: string; count: string }) => ({
+          resource_type: row.resource_type,
+          count: parseInt(row.count),
+        })
+      ),
       logs_by_status: statusResult.rows.map((row: { status: string; count: string }) => ({
         status: row.status,
         count: parseInt(row.count),

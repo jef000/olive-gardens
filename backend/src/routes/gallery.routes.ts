@@ -1,7 +1,12 @@
 import { Router } from 'express';
 import galleryController from '../controllers/gallery.controller';
-import { authenticate, authorize } from '../middleware/auth.middleware';
-import { upload } from '../middleware/upload.middleware';
+import { authenticate, authorize, optionalAuthenticate } from '../middleware/auth.middleware';
+import { validate } from '../middleware/validate';
+import {
+  createGalleryImageSchema,
+  updateGalleryImageSchema,
+} from '../validators/gallery.validator';
+import { secureUpload, validateUploadedImage } from '../middleware/fileUpload.middleware';
 
 const router = Router();
 
@@ -15,7 +20,8 @@ router.post(
   '/upload',
   authenticate,
   authorize('admin', 'moderator'),
-  upload.single('image'),
+  secureUpload.single('image'),
+  validateUploadedImage,
   galleryController.uploadImage.bind(galleryController)
 );
 
@@ -30,6 +36,7 @@ router.get(
 // GET /gallery/album/:album - Get images by album
 router.get(
   '/album/:album',
+  optionalAuthenticate,
   galleryController.getImagesByAlbum.bind(galleryController)
 );
 
@@ -50,22 +57,17 @@ router.patch(
 );
 
 // GET /gallery/:id - Get image by ID
-router.get(
-  '/:id',
-  galleryController.getImageById.bind(galleryController)
-);
+router.get('/:id', optionalAuthenticate, galleryController.getImageById.bind(galleryController));
 
 // GET /gallery - Get all images with filters
-router.get(
-  '/',
-  galleryController.getAllImages.bind(galleryController)
-);
+router.get('/', optionalAuthenticate, galleryController.getAllImages.bind(galleryController));
 
 // POST /gallery - Create new image (Admin/Moderator only)
 router.post(
   '/',
   authenticate,
   authorize('admin', 'moderator'),
+  validate(createGalleryImageSchema),
   galleryController.createImage.bind(galleryController)
 );
 
@@ -74,6 +76,7 @@ router.put(
   '/:id',
   authenticate,
   authorize('admin', 'moderator'),
+  validate(updateGalleryImageSchema),
   galleryController.updateImage.bind(galleryController)
 );
 

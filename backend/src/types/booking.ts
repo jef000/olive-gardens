@@ -68,4 +68,6 @@ export interface BookingFilters {
   start_date?: string;
   end_date?: string;
   search?: string;
+  page?: number;
+  limit?: number;
 }

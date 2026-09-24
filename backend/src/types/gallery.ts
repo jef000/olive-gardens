@@ -1,10 +1,24 @@
+export type GalleryAlbum =
+  | 'Main Arena'
+  | 'Garden Hall'
+  | 'Gardens'
+  | 'Garden of Eden'
+  | 'Mount Sinai Prayer Area'
+  | 'Picnic Grounds'
+  | 'Camping Grounds'
+  | 'Therapy Room'
+  | 'Events'
+  | 'Facilities'
+  | 'Other';
+
 export interface GalleryImage {
   id: string;
   title: string;
+  alt_text?: string;
   description?: string;
   url: string;
   thumbnail_url?: string;
-  album: 'Main Arena' | 'Garden Hall' | 'Therapy Room' | 'Events' | 'Facilities' | 'Other';
+  album: GalleryAlbum;
   category?: string;
   tags?: string[];
   file_size?: number;
@@ -20,6 +34,7 @@ export interface GalleryImage {
 
 export interface CreateGalleryImageDTO {
   title: string;
+  alt_text?: string;
   description?: string;
   url: string;
   thumbnail_url?: string;
@@ -36,6 +51,7 @@ export interface CreateGalleryImageDTO {
 
 export interface UpdateGalleryImageDTO {
   title?: string;
+  alt_text?: string;
   description?: string;
   url?: string;
   thumbnail_url?: string;
@@ -52,4 +68,6 @@ export interface GalleryFilters {
   is_featured?: boolean;
   is_published?: boolean;
   search?: string;
+  page?: number;
+  limit?: number;
 }

@@ -24,8 +24,8 @@ export class AuditController {
         end_date: req.query.end_date as string,
         ip_address: req.query.ip_address as string,
         search: req.query.search as string,
-        page: req.query.page ? parseInt(req.query.page as string) : 1,
-        limit: req.query.limit ? parseInt(req.query.limit as string) : 50,
+        page: Math.max(1, parseInt(req.query.page as string) || 1),
+        limit: Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50)),
         sort_by: (req.query.sort_by as any) || 'timestamp',
         sort_order: (req.query.sort_order as any) || 'desc',
       };
@@ -62,7 +62,7 @@ export class AuditController {
   async getResourceAuditHistory(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { resourceType, resourceId } = req.params;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string) || 50));
 
       const logs = await AuditService.getResourceAuditHistory(
         resourceType as AuditResourceType,
@@ -83,7 +83,7 @@ export class AuditController {
   async getUserAuditHistory(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { userId } = req.params;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string) || 50));
 
       const logs = await AuditService.getUserAuditHistory(userId, limit);
       sendSuccess(res, { logs, total: logs.length });
@@ -98,7 +98,7 @@ export class AuditController {
    */
   async getRecentActivity(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string) || 100));
       
       const filters: AuditLogFilters = {
         start_date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -120,7 +120,7 @@ export class AuditController {
    */
   async getFailedOperations(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : 100;
+      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit as string) || 100));
       
       const filters: AuditLogFilters = {
         status: 'failure' as any,
@@ -142,7 +142,9 @@ export class AuditController {
    */
   async cleanupOldLogs(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const retentionDays = req.body.retention_days || 365;
+      // A negative or missing retention would delete the whole tamper trail.
+      const requested = Number(req.body.retention_days);
+      const retentionDays = Number.isFinite(requested) && requested >= 1 ? Math.min(3650, Math.floor(requested)) : 365;
       const deletedCount = await AuditService.cleanupOldLogs(retentionDays);
       
       sendSuccess(res, {

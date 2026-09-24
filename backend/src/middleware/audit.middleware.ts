@@ -2,15 +2,22 @@
 // Automatically tracks and logs all HTTP requests for audit trail
 
 import { Request, Response, NextFunction } from 'express';
+import { randomUUID } from 'crypto';
 import { AuditService } from '../services/audit.service';
 import { AuditAction, AuditResourceType, AuditStatus } from '../types/audit';
 
+// Response objects already written to the audit log (json -> send double fire).
+const auditedResponses = new WeakSet<Response>();
+
 // Extend Express Request to include audit context
 declare global {
+  // Express request augmentation is required for middleware context.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       auditContext?: {
         startTime: number;
+        requestId: string;
         action?: AuditAction;
         resourceType?: AuditResourceType;
         resourceId?: string;
@@ -35,25 +42,25 @@ function getClientIp(req: Request): string | undefined {
  */
 function mapToAuditAction(method: string, path: string): AuditAction {
   const normalizedMethod = method.toUpperCase();
-  
+
   // Authentication endpoints
   if (path.includes('/auth/login')) return AuditAction.LOGIN;
   if (path.includes('/auth/logout')) return AuditAction.LOGOUT;
   if (path.includes('/auth/reset-password')) return AuditAction.PASSWORD_RESET;
   if (path.includes('/auth/change-password')) return AuditAction.PASSWORD_CHANGE;
-  
+
   // File operations
   if (path.includes('/upload')) return AuditAction.UPLOAD;
   if (path.includes('/download')) return AuditAction.DOWNLOAD;
   if (path.includes('/export')) return AuditAction.EXPORT;
   if (path.includes('/import')) return AuditAction.IMPORT;
-  
+
   // Status changes
   if (path.includes('/approve')) return AuditAction.APPROVE;
   if (path.includes('/reject')) return AuditAction.REJECT;
   if (path.includes('/cancel')) return AuditAction.CANCEL;
   if (path.includes('/restore')) return AuditAction.RESTORE;
-  
+
   // Standard CRUD operations
   switch (normalizedMethod) {
     case 'POST':
@@ -91,25 +98,28 @@ function extractResourceId(req: Request): string | undefined {
   if (req.params.userId) return req.params.userId;
   if (req.params.bookingId) return req.params.bookingId;
   if (req.params.imageId) return req.params.imageId;
-  
+
   // Try to extract from body for create operations
   if (req.body?.id) return req.body.id;
-  
+
   return undefined;
 }
 
 /**
  * Middleware to initialize audit context at the start of request
  */
-export const auditContextMiddleware = (req: Request, _res: Response, next: NextFunction): void => {
+export const auditContextMiddleware = (req: Request, res: Response, next: NextFunction): void => {
+  const requestId = req.header('x-request-id') || randomUUID();
+  res.setHeader('X-Request-ID', requestId);
   // Initialize audit context
   req.auditContext = {
     startTime: Date.now(),
+    requestId,
     action: mapToAuditAction(req.method, req.path),
     resourceType: mapToResourceType(req.path),
     resourceId: extractResourceId(req),
   };
-  
+
   next();
 };
 
@@ -119,7 +129,7 @@ export const auditContextMiddleware = (req: Request, _res: Response, next: NextF
 export const auditLogMiddleware = (req: Request, res: Response, next: NextFunction): void => {
   // Skip audit logging for certain paths
   const skipPaths = ['/health', '/metrics', '/favicon.ico', '/static'];
-  if (skipPaths.some(path => req.path.includes(path))) {
+  if (skipPaths.some((path) => req.path.includes(path))) {
     return next();
   }
 
@@ -146,6 +156,12 @@ export const auditLogMiddleware = (req: Request, res: Response, next: NextFuncti
  * Helper function to log audit entry
  */
 async function logAudit(req: Request, res: Response, responseBody?: any): Promise<void> {
+  // Express's res.json delegates to res.send, which means both overrides fire
+  // for a JSON response. Claim the response once so each request writes a
+  // single audit row.
+  if (auditedResponses.has(res)) return;
+  auditedResponses.add(res);
+
   try {
     const duration = req.auditContext ? Date.now() - req.auditContext.startTime : 0;
     const statusCode = res.statusCode;
@@ -153,14 +169,16 @@ async function logAudit(req: Request, res: Response, responseBody?: any): Promis
 
     // Extract user information from request (assuming auth middleware sets req.user)
     const user = (req as any).user;
-    const userId = user?.id;
+    const userId = user?.userId || user?.id;
     const userEmail = user?.email;
     const userRole = user?.role;
 
     // Determine if we should log this request
     // Skip logging for READ operations on analytics (too verbose)
-    if (req.auditContext?.action === AuditAction.READ && 
-        req.auditContext?.resourceType === AuditResourceType.ANALYTICS) {
+    if (
+      req.auditContext?.action === AuditAction.READ &&
+      req.auditContext?.resourceType === AuditResourceType.ANALYTICS
+    ) {
       return;
     }
 
@@ -196,6 +214,23 @@ async function logAudit(req: Request, res: Response, responseBody?: any): Promis
     }
 
     // Create audit log entry
+    void AuditService.createDetailedAuditLog({
+      userId,
+      sessionId: req.sessionId,
+      requestId: req.auditContext?.requestId || randomUUID(),
+      operationType: req.auditContext?.action || AuditAction.READ,
+      resourceType: req.auditContext?.resourceType,
+      resourceId: req.auditContext?.resourceId,
+      httpMethod: req.method,
+      endpoint: req.path,
+      ipAddress: getClientIp(req),
+      userAgent: req.headers['user-agent'],
+      statusCode,
+      success: isSuccess,
+      errorMessage: !isSuccess && responseBody?.message ? responseBody.message : undefined,
+      changes,
+    });
+
     await AuditService.createAuditLog({
       user_id: userId,
       user_email: userEmail,
@@ -241,7 +276,7 @@ export async function logManualAudit(
     const duration = req.auditContext ? Date.now() - req.auditContext.startTime : 0;
 
     await AuditService.createAuditLog({
-      user_id: user?.id,
+      user_id: user?.userId || user?.id,
       user_email: user?.email,
       user_role: user?.role,
       action,

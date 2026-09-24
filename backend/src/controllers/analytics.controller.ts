@@ -3,6 +3,24 @@ import { query } from '../db/pool';
 import { AnalyticsEvent, CreateAnalyticsEventDTO } from '../types/analytics';
 import { sendSuccess } from '../utils/response';
 
+function buildCreatedAtRange(
+  start_date?: string,
+  end_date?: string,
+  offset = 0
+): { sql: string; values: string[] } {
+  const conditions: string[] = [];
+  const values: string[] = [];
+  if (start_date) {
+    values.push(start_date);
+    conditions.push(`created_at >= $${offset + values.length}::date`);
+  }
+  if (end_date) {
+    values.push(end_date);
+    conditions.push(`created_at < ($${offset + values.length}::date + INTERVAL '1 day')`);
+  }
+  return { sql: conditions.length ? ` AND ${conditions.join(' AND ')}` : '', values };
+}
+
 export class AnalyticsController {
   /**
    * Track analytics event
@@ -49,34 +67,27 @@ export class AnalyticsController {
    */
   async getOverview(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { start_date, end_date } = req.query;
-
-      let dateFilter = '';
-      const queryParams: any[] = [];
-
-      if (start_date && end_date) {
-        dateFilter = 'WHERE created_at BETWEEN $1 AND $2';
-        queryParams.push(start_date, end_date);
-      }
+      const { start_date, end_date } = req.query as { start_date?: string; end_date?: string };
+      const range = buildCreatedAtRange(start_date, end_date);
 
       const totalBookingsResult = await query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM bookings ${dateFilter}`,
-        queryParams
+        `SELECT COUNT(*) as count FROM bookings WHERE 1=1${range.sql}`,
+        range.values
       );
 
       const totalRevenueResult = await query<{ revenue: string }>(
-        `SELECT COALESCE(SUM(total_amount), 0) as revenue FROM bookings WHERE status != 'cancelled' ${dateFilter ? 'AND created_at BETWEEN $1 AND $2' : ''}`,
-        queryParams
+        `SELECT COALESCE(SUM(total_amount), 0) as revenue FROM bookings WHERE status != 'cancelled'${range.sql}`,
+        range.values
       );
 
       const totalUsersResult = await query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM users ${dateFilter}`,
-        queryParams
+        `SELECT COUNT(*) as count FROM users WHERE 1=1${range.sql}`,
+        range.values
       );
 
       const totalEventsResult = await query<{ count: string }>(
-        `SELECT COUNT(*) as count FROM analytics_events ${dateFilter}`,
-        queryParams
+        `SELECT COUNT(*) as count FROM analytics_events WHERE 1=1${range.sql}`,
+        range.values
       );
 
       sendSuccess(res, {
@@ -95,45 +106,52 @@ export class AnalyticsController {
    * GET /api/analytics/revenue
    * Security: Admin and moderator only
    */
-  async getRevenueAnalytics(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getRevenueAnalytics(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const { start_date, end_date } = req.query as { start_date?: string; end_date?: string };
+      const range = buildCreatedAtRange(start_date, end_date);
+      const monthWindow = range.sql ? '' : ` AND created_at >= NOW() - INTERVAL '12 months'`;
+
       const revenueByMonth = await query<{ month: string; revenue: string }>(
         `SELECT 
-          TO_CHAR(created_at, 'Mon') as month,
+          TO_CHAR(DATE_TRUNC('month', created_at), 'Mon YYYY') as month,
           COALESCE(SUM(total_amount), 0) as revenue
         FROM bookings
         WHERE status != 'cancelled'
-          AND created_at >= NOW() - INTERVAL '12 months'
-        GROUP BY TO_CHAR(created_at, 'Mon'), EXTRACT(MONTH FROM created_at)
-        ORDER BY EXTRACT(MONTH FROM created_at)`
+          ${monthWindow}${range.sql}
+        GROUP BY DATE_TRUNC('month', created_at)
+        ORDER BY DATE_TRUNC('month', created_at)`,
+        range.values
       );
 
       const revenueByVenue = await query<{ venue: string; revenue: string }>(
         `SELECT venue, COALESCE(SUM(total_amount), 0) as revenue
         FROM bookings
-        WHERE status != 'cancelled'
+        WHERE status != 'cancelled'${range.sql}
         GROUP BY venue
-        ORDER BY revenue DESC`
+        ORDER BY revenue DESC`,
+        range.values
       );
 
       const revenueByEventType = await query<{ event_type: string; revenue: string }>(
         `SELECT event_type, COALESCE(SUM(total_amount), 0) as revenue
         FROM bookings
-        WHERE status != 'cancelled'
+        WHERE status != 'cancelled'${range.sql}
         GROUP BY event_type
-        ORDER BY revenue DESC`
+        ORDER BY revenue DESC`,
+        range.values
       );
 
       sendSuccess(res, {
-        revenue_by_month: revenueByMonth.rows.map(row => ({
+        revenue_by_month: revenueByMonth.rows.map((row) => ({
           month: row.month,
           revenue: parseFloat(row.revenue),
         })),
-        revenue_by_venue: revenueByVenue.rows.map(row => ({
+        revenue_by_venue: revenueByVenue.rows.map((row) => ({
           venue: row.venue,
           revenue: parseFloat(row.revenue),
         })),
-        revenue_by_event_type: revenueByEventType.rows.map(row => ({
+        revenue_by_event_type: revenueByEventType.rows.map((row) => ({
           event_type: row.event_type,
           revenue: parseFloat(row.revenue),
         })),
@@ -148,52 +166,63 @@ export class AnalyticsController {
    * GET /api/analytics/bookings/trends
    * Security: Admin and moderator only
    */
-  async getBookingTrends(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getBookingTrends(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const { start_date, end_date } = req.query as { start_date?: string; end_date?: string };
+      const range = buildCreatedAtRange(start_date, end_date);
+      const dayWindow = range.sql ? '' : ` AND created_at >= NOW() - INTERVAL '30 days'`;
+
       const dailyBookings = await query<{ date: string; count: string }>(
         `SELECT 
           DATE(created_at) as date,
           COUNT(*) as count
         FROM bookings
-        WHERE created_at >= NOW() - INTERVAL '30 days'
+        WHERE 1=1${dayWindow}${range.sql}
         GROUP BY DATE(created_at)
-        ORDER BY date DESC`
+        ORDER BY date DESC`,
+        range.values
       );
 
       const bookingsByStatus = await query<{ status: string; count: string }>(
         `SELECT status, COUNT(*) as count
         FROM bookings
-        GROUP BY status`
+        WHERE 1=1${range.sql}
+        GROUP BY status`,
+        range.values
       );
 
       const bookingsByVenue = await query<{ venue: string; count: string }>(
         `SELECT venue, COUNT(*) as count
         FROM bookings
+        WHERE 1=1${range.sql}
         GROUP BY venue
-        ORDER BY count DESC`
+        ORDER BY count DESC`,
+        range.values
       );
 
       const bookingsByEventType = await query<{ event_type: string; count: string }>(
         `SELECT event_type, COUNT(*) as count
         FROM bookings
+        WHERE 1=1${range.sql}
         GROUP BY event_type
-        ORDER BY count DESC`
+        ORDER BY count DESC`,
+        range.values
       );
 
       sendSuccess(res, {
-        daily_bookings: dailyBookings.rows.map(row => ({
+        daily_bookings: dailyBookings.rows.map((row) => ({
           date: row.date,
           count: parseInt(row.count),
         })),
-        bookings_by_status: bookingsByStatus.rows.map(row => ({
+        bookings_by_status: bookingsByStatus.rows.map((row) => ({
           status: row.status,
           count: parseInt(row.count),
         })),
-        bookings_by_venue: bookingsByVenue.rows.map(row => ({
+        bookings_by_venue: bookingsByVenue.rows.map((row) => ({
           venue: row.venue,
           count: parseInt(row.count),
         })),
-        bookings_by_event_type: bookingsByEventType.rows.map(row => ({
+        bookings_by_event_type: bookingsByEventType.rows.map((row) => ({
           event_type: row.event_type,
           count: parseInt(row.count),
         })),
@@ -239,15 +268,15 @@ export class AnalyticsController {
       );
 
       sendSuccess(res, {
-        events_by_type: eventsByType.rows.map(row => ({
+        events_by_type: eventsByType.rows.map((row) => ({
           event_type: row.event_type,
           count: parseInt(row.count),
         })),
-        events_by_category: eventsByCategory.rows.map(row => ({
+        events_by_category: eventsByCategory.rows.map((row) => ({
           category: row.event_category,
           count: parseInt(row.count),
         })),
-        top_pages: topPages.rows.map(row => ({
+        top_pages: topPages.rows.map((row) => ({
           page: row.page_url,
           views: parseInt(row.count),
         })),
@@ -264,7 +293,6 @@ export class AnalyticsController {
    */
   async getDashboardMetrics(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-
       const currentMonthBookings = await query<{ count: string; revenue: string }>(
         `SELECT 
           COUNT(*) as count,
@@ -316,11 +344,15 @@ export class AnalyticsController {
 
       const currentRevenue = parseFloat(currentMonthBookings.rows[0].revenue);
       const lastRevenue = parseFloat(lastMonthBookings.rows[0].revenue);
-      const revenueGrowth = lastRevenue > 0 ? ((currentRevenue - lastRevenue) / lastRevenue) * 100 : 0;
+      const revenueGrowth =
+        lastRevenue > 0 ? ((currentRevenue - lastRevenue) / lastRevenue) * 100 : 0;
 
       const currentInquiriesCount = parseInt(currentMonthInquiries.rows[0].count);
       const lastInquiriesCount = parseInt(lastMonthInquiries.rows[0].count);
-      const inquiriesGrowth = lastInquiriesCount > 0 ? ((currentInquiriesCount - lastInquiriesCount) / lastInquiriesCount) * 100 : 0;
+      const inquiriesGrowth =
+        lastInquiriesCount > 0
+          ? ((currentInquiriesCount - lastInquiriesCount) / lastInquiriesCount) * 100
+          : 0;
 
       sendSuccess(res, {
         current_month: {

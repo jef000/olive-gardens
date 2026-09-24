@@ -3,6 +3,8 @@ import { query } from '../db/pool';
 import { Booking, CreateBookingDTO, UpdateBookingDTO, BookingFilters } from '../types/booking';
 import { sendSuccess, sendError } from '../utils/response';
 import notificationService from '../services/notification.service';
+import { safeNotify } from '../utils/safeNotify';
+import { randomBytes } from 'crypto';
 
 export class BookingController {
   /**
@@ -22,9 +24,8 @@ export class BookingController {
       const result = await query<{
         event_date: string;
         status: string;
-        event_name: string;
       }>(
-        `SELECT event_date, status, event_name
+        `SELECT event_date, status
          FROM bookings
          WHERE venue = $1
            AND status IN ('pending', 'confirmed', 'completed')
@@ -47,7 +48,6 @@ export class BookingController {
           return {
             date: parsedDate.toISOString().split('T')[0],
             status: row.status === 'pending' ? 'tentative' : 'booked',
-            label: row.event_name,
           };
         })
         .filter(Boolean) as { date: string; status: string; label?: string }[];
@@ -65,15 +65,8 @@ export class BookingController {
    */
   async getAllBookings(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const {
-        status,
-        venue,
-        event_type,
-        payment_status,
-        start_date,
-        end_date,
-        search,
-      } = req.query as BookingFilters;
+      const { status, venue, event_type, payment_status, start_date, end_date, search } =
+        req.query as BookingFilters;
 
       let queryText = 'SELECT * FROM bookings WHERE 1=1';
       const queryParams: any[] = [];
@@ -121,13 +114,24 @@ export class BookingController {
         paramCount++;
       }
 
-      queryText += ' ORDER BY event_date DESC, created_at DESC';
+      const countResult = await query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM bookings WHERE ${queryText.split(' WHERE ')[1]}`,
+        queryParams
+      );
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
+      const offset = (page - 1) * limit;
+      queryText += ` ORDER BY event_date DESC, created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+      queryParams.push(limit, offset);
 
       const result = await query<Booking>(queryText, queryParams);
 
       sendSuccess(res, {
         bookings: result.rows,
-        total: result.rows.length,
+        total: Number(countResult.rows[0]?.count || 0),
+        page,
+        limit,
+        has_more: offset + result.rows.length < Number(countResult.rows[0]?.count || 0),
       });
     } catch (error) {
       next(error);
@@ -143,10 +147,7 @@ export class BookingController {
     try {
       const { id } = req.params;
 
-      const result = await query<Booking>(
-        'SELECT * FROM bookings WHERE id = $1',
-        [id]
-      );
+      const result = await query<Booking>('SELECT * FROM bookings WHERE id = $1', [id]);
 
       if (result.rows.length === 0) {
         sendError(res, 'Booking not found', 404);
@@ -168,10 +169,9 @@ export class BookingController {
     try {
       const { reference } = req.params;
 
-      const result = await query<Booking>(
-        'SELECT * FROM bookings WHERE booking_reference = $1',
-        [reference]
-      );
+      const result = await query<Booking>('SELECT * FROM bookings WHERE booking_reference = $1', [
+        reference,
+      ]);
 
       if (result.rows.length === 0) {
         sendError(res, 'Booking not found', 404);
@@ -193,10 +193,32 @@ export class BookingController {
     try {
       const bookingData: CreateBookingDTO = req.body;
       const userId = req.user?.userId;
+      const isPublicRequest = !req.user;
+
+      // Public submissions may not double-book a space that already has a live
+      // booking on that date.
+      if (isPublicRequest) {
+        const conflict = await query<{ id: string }>(
+          `SELECT id FROM bookings
+           WHERE venue = $1 AND event_date = $2 AND status IN ('pending', 'confirmed')
+           LIMIT 1`,
+          [bookingData.venue, bookingData.event_date]
+        );
+        if (conflict.rows.length > 0) {
+          sendError(
+            res,
+            'This space is already booked for the selected date. Please choose another date or contact us.',
+            409
+          );
+          return;
+        }
+      }
 
       const bookingReference = await this.generateBookingReference();
 
-      const balanceAmount = bookingData.total_amount - (bookingData.deposit_amount || 0);
+      const totalAmount = Number(bookingData.total_amount || 0);
+      const depositAmount = Number(bookingData.deposit_amount || 0);
+      const balanceAmount = totalAmount - depositAmount;
 
       const result = await query<Booking>(
         `INSERT INTO bookings (
@@ -217,8 +239,8 @@ export class BookingController {
           bookingData.event_date,
           bookingData.start_time,
           bookingData.end_time,
-          bookingData.total_amount,
-          bookingData.deposit_amount || 0,
+          totalAmount,
+          depositAmount,
           balanceAmount,
           bookingData.guest_count,
           bookingData.special_requests,
@@ -228,13 +250,16 @@ export class BookingController {
       );
 
       // Send notification to admins/moderators
-      await notificationService.notifyBookingEvent(
-        'booking_created',
-        result.rows[0].id,
-        bookingReference,
-        bookingData.client_name,
-        bookingData.event_name,
-        'high'
+      safeNotify(
+        notificationService.notifyBookingEvent(
+          'booking_created',
+          result.rows[0].id,
+          bookingReference,
+          bookingData.client_name,
+          bookingData.event_name,
+          'high'
+        ),
+        'booking_created'
       );
 
       sendSuccess(res, { booking: result.rows[0] }, 'Booking created successfully', 201);
@@ -253,10 +278,7 @@ export class BookingController {
       const { id } = req.params;
       const updateData: UpdateBookingDTO = req.body;
 
-      const existingBooking = await query<Booking>(
-        'SELECT * FROM bookings WHERE id = $1',
-        [id]
-      );
+      const existingBooking = await query<Booking>('SELECT * FROM bookings WHERE id = $1', [id]);
 
       if (existingBooking.rows.length === 0) {
         sendError(res, 'Booking not found', 404);
@@ -267,9 +289,31 @@ export class BookingController {
       const values: any[] = [];
       let paramCount = 1;
 
-      Object.entries(updateData).forEach(([key, value]) => {
+      // Only known columns may be updated; keys from the request body are never
+      // interpolated into SQL directly.
+      const updatableFields: (keyof UpdateBookingDTO)[] = [
+        'client_name',
+        'client_email',
+        'client_phone',
+        'event_name',
+        'event_type',
+        'venue',
+        'event_date',
+        'start_time',
+        'end_time',
+        'total_amount',
+        'deposit_amount',
+        'guest_count',
+        'special_requests',
+        'notes',
+        'status',
+        'payment_status',
+      ];
+
+      updatableFields.forEach((field) => {
+        const value = updateData[field];
         if (value !== undefined) {
-          updates.push(`${key} = $${paramCount}`);
+          updates.push(`${field} = $${paramCount}`);
           values.push(value);
           paramCount++;
         }
@@ -279,7 +323,7 @@ export class BookingController {
         const totalAmount = updateData.total_amount ?? existingBooking.rows[0].total_amount;
         const depositAmount = updateData.deposit_amount ?? existingBooking.rows[0].deposit_amount;
         const balanceAmount = totalAmount - depositAmount;
-        
+
         updates.push(`balance_amount = $${paramCount}`);
         values.push(balanceAmount);
         paramCount++;
@@ -301,31 +345,40 @@ export class BookingController {
 
       // Send notification for status changes
       if (updateData.status) {
-        const notifType = updateData.status === 'confirmed' 
-          ? 'booking_confirmed' 
-          : updateData.status === 'cancelled'
-          ? 'booking_cancelled'
-          : updateData.status === 'completed'
-          ? 'booking_completed'
-          : 'booking_updated';
+        const notifType =
+          updateData.status === 'confirmed'
+            ? 'booking_confirmed'
+            : updateData.status === 'cancelled'
+              ? 'booking_cancelled'
+              : updateData.status === 'completed'
+                ? 'booking_completed'
+                : 'booking_updated';
 
-        await notificationService.notifyBookingEvent(
-          notifType,
-          booking.id,
-          booking.booking_reference,
-          booking.client_name,
-          booking.event_name,
-          updateData.status === 'confirmed' || updateData.status === 'cancelled' ? 'high' : 'medium'
+        safeNotify(
+          notificationService.notifyBookingEvent(
+            notifType,
+            booking.id,
+            booking.booking_reference,
+            booking.client_name,
+            booking.event_name,
+            updateData.status === 'confirmed' || updateData.status === 'cancelled'
+              ? 'high'
+              : 'medium'
+          ),
+          notifType
         );
       } else {
         // General update notification
-        await notificationService.notifyBookingEvent(
-          'booking_updated',
-          booking.id,
-          booking.booking_reference,
-          booking.client_name,
-          booking.event_name,
-          'medium'
+        safeNotify(
+          notificationService.notifyBookingEvent(
+            'booking_updated',
+            booking.id,
+            booking.booking_reference,
+            booking.client_name,
+            booking.event_name,
+            'medium'
+          ),
+          'booking_updated'
         );
       }
 
@@ -344,10 +397,7 @@ export class BookingController {
     try {
       const { id } = req.params;
 
-      const result = await query<Booking>(
-        'DELETE FROM bookings WHERE id = $1 RETURNING *',
-        [id]
-      );
+      const result = await query<Booking>('DELETE FROM bookings WHERE id = $1 RETURNING *', [id]);
 
       if (result.rows.length === 0) {
         sendError(res, 'Booking not found', 404);
@@ -365,27 +415,70 @@ export class BookingController {
    * GET /api/bookings/stats/summary
    * Security: Admin and moderator only
    */
-  async getBookingStats(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getBookingStats(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const totalBookingsResult = await query<{ count: string }>('SELECT COUNT(*) as count FROM bookings');
-      const totalRevenueResult = await query<{ revenue: string }>('SELECT SUM(total_amount) as revenue FROM bookings WHERE status != $1', ['cancelled']);
-      const pendingBookingsResult = await query<{ count: string }>('SELECT COUNT(*) as count FROM bookings WHERE status = $1', ['pending']);
-      const confirmedBookingsResult = await query<{ count: string }>('SELECT COUNT(*) as count FROM bookings WHERE status = $1', ['confirmed']);
+      const { start_date, end_date } = req.query as { start_date?: string; end_date?: string };
 
+      const dateClause = (offset: number): { sql: string; values: string[] } => {
+        const conditions: string[] = [];
+        const values: string[] = [];
+        if (start_date) {
+          values.push(start_date);
+          conditions.push(`event_date >= $${offset + values.length}`);
+        }
+        if (end_date) {
+          values.push(end_date);
+          conditions.push(`event_date <= $${offset + values.length}`);
+        }
+        return { sql: conditions.length ? ` AND ${conditions.join(' AND ')}` : '', values };
+      };
+
+      const bookingsFilter = dateClause(0);
+      const totalBookingsResult = await query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM bookings WHERE 1=1${bookingsFilter.sql}`,
+        bookingsFilter.values
+      );
+
+      const revenueFilter = dateClause(1);
+      const totalRevenueResult = await query<{ revenue: string }>(
+        `SELECT COALESCE(SUM(total_amount), 0) as revenue FROM bookings WHERE status != $1${revenueFilter.sql}`,
+        ['cancelled', ...revenueFilter.values]
+      );
+
+      const pendingFilter = dateClause(1);
+      const pendingBookingsResult = await query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM bookings WHERE status = $1${pendingFilter.sql}`,
+        ['pending', ...pendingFilter.values]
+      );
+
+      const confirmedFilter = dateClause(1);
+      const confirmedBookingsResult = await query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM bookings WHERE status = $1${confirmedFilter.sql}`,
+        ['confirmed', ...confirmedFilter.values]
+      );
+
+      const statusFilter = dateClause(0);
       const statusBreakdown = await query<{ status: string; count: string }>(
-        'SELECT status, COUNT(*) as count FROM bookings GROUP BY status'
+        `SELECT status, COUNT(*) as count FROM bookings WHERE 1=1${statusFilter.sql} GROUP BY status`,
+        statusFilter.values
       );
 
+      const venueFilter = dateClause(0);
       const venueBreakdown = await query<{ venue: string; count: string }>(
-        'SELECT venue, COUNT(*) as count FROM bookings GROUP BY venue ORDER BY count DESC'
+        `SELECT venue, COUNT(*) as count FROM bookings WHERE 1=1${venueFilter.sql} GROUP BY venue ORDER BY count DESC`,
+        venueFilter.values
       );
 
+      const eventTypeFilter = dateClause(0);
       const eventTypeBreakdown = await query<{ event_type: string; count: string }>(
-        'SELECT event_type, COUNT(*) as count FROM bookings GROUP BY event_type ORDER BY count DESC'
+        `SELECT event_type, COUNT(*) as count FROM bookings WHERE 1=1${eventTypeFilter.sql} GROUP BY event_type ORDER BY count DESC`,
+        eventTypeFilter.values
       );
 
+      const paymentStatusFilter = dateClause(0);
       const paymentStatusBreakdown = await query<{ payment_status: string; count: string }>(
-        'SELECT payment_status, COUNT(*) as count FROM bookings GROUP BY payment_status'
+        `SELECT payment_status, COUNT(*) as count FROM bookings WHERE 1=1${paymentStatusFilter.sql} GROUP BY payment_status`,
+        paymentStatusFilter.values
       );
 
       sendSuccess(res, {
@@ -404,24 +497,12 @@ export class BookingController {
   }
 
   /**
-   * Generate unique booking reference
+   * Generate unique booking reference.
+   * 32 bits of randomness keeps collisions negligible; the UNIQUE constraint
+   * (23505) remains the backstop instead of a racy SELECT-then-insert.
    */
   private async generateBookingReference(): Promise<string> {
-    const prefix = 'BK';
-    const timestamp = Date.now().toString().slice(-6);
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    const reference = `${prefix}-${timestamp}${random}`;
-
-    const existing = await query(
-      'SELECT id FROM bookings WHERE booking_reference = $1',
-      [reference]
-    );
-
-    if (existing.rows.length > 0) {
-      return this.generateBookingReference();
-    }
-
-    return reference;
+    return `BK-${randomBytes(4).toString('hex').toUpperCase()}`;
   }
 }
 

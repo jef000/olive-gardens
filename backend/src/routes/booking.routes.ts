@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import bookingController from '../controllers/booking.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { validate } from '../middleware/validate';
+import { publicBookingSchema } from '../validators/booking.validator';
 
 const router = Router();
 
@@ -17,6 +19,7 @@ router.get(
 // POST /bookings/public - Create new booking from frontend
 router.post(
   '/public',
+  validate(publicBookingSchema),
   bookingController.createBooking.bind(bookingController)
 );
 
@@ -62,6 +65,7 @@ router.post(
   '/',
   authenticate,
   authorize('admin', 'moderator'),
+  validate(publicBookingSchema),
   bookingController.createBooking.bind(bookingController)
 );
 
