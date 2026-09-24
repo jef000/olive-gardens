@@ -2,7 +2,7 @@ import { Router } from 'express';
 import userController from '../controllers/user.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate';
-import { createUserSchema } from '../validators/user.validator';
+import { createUserSchema, resendTemporaryPasswordSchema, updateUserSchema } from '../validators/user.validator';
 
 const router = Router();
 
@@ -52,6 +52,7 @@ router.put(
   '/:id',
   authenticate,
   authorize('admin'),
+  validate(updateUserSchema),
   userController.updateUser.bind(userController)
 );
 
@@ -60,6 +61,7 @@ router.post(
   '/:id/resend-temporary-password',
   authenticate,
   authorize('admin'),
+  validate(resendTemporaryPasswordSchema),
   userController.resendTemporaryPassword.bind(userController)
 );
 

@@ -13,6 +13,9 @@ export interface User {
   account_locked_until: Date | null;
   created_at: Date;
   updated_at: Date;
+  mfa_enabled?: boolean;
+  mfa_secret?: string | null;
+  mfa_backup_codes?: string | null;
 }
 
 export interface UserResponse {
@@ -20,4 +23,5 @@ export interface UserResponse {
   email: string;
   role: string;
   created_at: Date;
+  mfa_enabled?: boolean;
 }

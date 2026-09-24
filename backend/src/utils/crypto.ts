@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { hashPassword } from './password';
+import config from '../config/env';
 
 /**
  * Generate secure random token for password reset
@@ -10,11 +10,12 @@ export const generateResetToken = (): string => {
 };
 
 /**
- * Hash reset token before storing in database
- * Security: Never store plain tokens in database
+ * Hash reset token before storing in database.
+ * HMAC-SHA256 is deterministic (so the stored value can be compared) and keyed
+ * with the server secret, so a database leak alone cannot derive tokens.
  */
 export const hashResetToken = async (token: string): Promise<string> => {
-  return hashPassword(token);
+  return crypto.createHmac('sha256', config.jwt.secret).update(token).digest('hex');
 };
 
 /**
@@ -25,5 +26,3 @@ export const getResetTokenExpiry = (): Date => {
   expiry.setTime(expiry.getTime() + config.resetToken.expiry);
   return expiry;
 };
-
-import config from '../config/env';

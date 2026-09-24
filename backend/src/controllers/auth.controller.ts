@@ -2,16 +2,29 @@ import { Request, Response, NextFunction } from 'express';
 import { query } from '../db/pool';
 import { User, UserResponse } from '../types/user';
 import { hashPassword, comparePassword } from '../utils/password';
-import { generateToken } from '../utils/jwt';
 import { sendSuccess, sendError } from '../utils/response';
 import { generateResetToken, hashResetToken, getResetTokenExpiry } from '../utils/crypto';
 import { sendPasswordResetEmail, sendPasswordChangeConfirmationEmail } from '../utils/email';
 import { sanitizeEmail } from '../utils/sanitize';
-import { isTempPasswordExpired, isAccountLocked, getAccountLockDuration } from '../utils/tempPassword';
+import {
+  isTempPasswordExpired,
+  isAccountLocked,
+  getAccountLockDuration,
+} from '../utils/tempPassword';
+import tokenService, { JwtPayload } from '../services/token.service';
+import csrfService from '../services/csrf.service';
+import sessionService from '../services/session.service';
+import { clearAuthCookies, getCookie, setAuthCookies } from '../utils/cookies';
+import { randomUUID, createHash } from 'crypto';
+import redisClient from '../db/redis';
+
+const MFA_ATTEMPT_LIMIT = 5;
+const MFA_ATTEMPT_WINDOW_SECONDS = 15 * 60;
+const MFA_CHALLENGE_MARKER_KEY = 'mfa:challenge:used';
 
 /**
  * Authentication Controller
- * 
+ *
  * Security Considerations:
  * - No service layer - all logic in controller and middleware
  * - Passwords hashed with bcrypt before storage
@@ -22,22 +35,61 @@ import { isTempPasswordExpired, isAccountLocked, getAccountLockDuration } from '
  */
 
 export class AuthController {
+  private async establishSession(
+    req: Request,
+    res: Response,
+    payload: JwtPayload,
+    user: User,
+    message?: string,
+    statusCode = 200
+  ): Promise<void> {
+    const sessionId = randomUUID();
+    const tokens = await tokenService.generateTokenPair(payload);
+    await sessionService.createSession(sessionId, payload, {
+      device: req.get('user-agent') || 'unknown',
+      ipAddress: req.ip || 'unknown',
+      userAgent: req.get('user-agent') || 'unknown',
+    });
+    const csrfToken = await csrfService.generateToken(sessionId);
+
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken, sessionId);
+    res.setHeader('X-CSRF-Token', csrfToken);
+
+    sendSuccess(
+      res,
+      {
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          created_at: user.created_at,
+        },
+        ...(user.must_change_password || user.is_temporary_password
+          ? { must_change_password: true }
+          : {}),
+      },
+      message,
+      statusCode
+    );
+  }
+
   /**
    * Register new user
    * POST /auth/register
-   * 
+   *
    * Security: Hashes password, checks for duplicate email
    */
   async register(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { email, password, role = 'user' } = req.body;
+      // Self-registration always creates a standard user. Privileged roles can
+      // only be granted by an existing admin through /api/users.
+      const { email, password } = req.body;
 
       const sanitizedEmail = sanitizeEmail(email);
 
-      const existingUser = await query<User>(
-        'SELECT id FROM users WHERE email = $1',
-        [sanitizedEmail]
-      );
+      const existingUser = await query<User>('SELECT id FROM users WHERE email = $1', [
+        sanitizedEmail,
+      ]);
 
       if (existingUser.rows.length > 0) {
         sendError(res, 'User with this email already exists', 409);
@@ -48,33 +100,20 @@ export class AuthController {
 
       const result = await query<User>(
         `INSERT INTO users (email, password, role) 
-         VALUES ($1, $2, $3) 
+         VALUES ($1, $2, 'user') 
          RETURNING id, email, role, created_at`,
-        [sanitizedEmail, hashedPassword, role]
+        [sanitizedEmail, hashedPassword]
       );
 
       const user = result.rows[0];
 
-      const token = generateToken({
+      const payload: JwtPayload = {
         userId: user.id,
         email: user.email,
         role: user.role,
-      });
+      };
 
-      sendSuccess(
-        res,
-        {
-          user: {
-            id: user.id,
-            email: user.email,
-            role: user.role,
-            created_at: user.created_at,
-          },
-          token,
-        },
-        'User registered successfully',
-        201
-      );
+      await this.establishSession(req, res, payload, user, 'User registered successfully', 201);
     } catch (error) {
       next(error);
     }
@@ -83,18 +122,16 @@ export class AuthController {
   /**
    * Login user
    * POST /auth/login
-   * 
+   *
    * Security: Constant-time password comparison, rate limited, account locking
    * Handles temporary password expiration and forces password change on first login
    */
   async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { email, password } = req.body;
+      const sanitizedEmail = sanitizeEmail(email);
 
-      const result = await query<User>(
-        'SELECT * FROM users WHERE email = $1',
-        [email.toLowerCase()]
-      );
+      const result = await query<User>('SELECT * FROM users WHERE email = $1', [sanitizedEmail]);
 
       if (result.rows.length === 0) {
         sendError(res, 'Invalid credentials', 401);
@@ -128,16 +165,23 @@ export class AuthController {
       const isPasswordValid = await comparePassword(password, user.password);
 
       if (!isPasswordValid) {
-        // Increment failed login attempts
-        const newFailedAttempts = user.failed_login_attempts + 1;
+        // Increment atomically: a read-modify-write lets parallel attempts all
+        // read the same counter and never reach the lockout threshold.
+        const updated = await query<{ failed_login_attempts: number }>(
+          `UPDATE users SET failed_login_attempts = failed_login_attempts + 1
+           WHERE id = $1
+           RETURNING failed_login_attempts`,
+          [user.id]
+        );
+        const newFailedAttempts = updated.rows[0]?.failed_login_attempts ?? 1;
         const lockUntil = getAccountLockDuration(newFailedAttempts);
 
-        await query(
-          `UPDATE users 
-           SET failed_login_attempts = $1, account_locked_until = $2 
-           WHERE id = $3`,
-          [newFailedAttempts, lockUntil, user.id]
-        );
+        if (lockUntil) {
+          await query('UPDATE users SET account_locked_until = $1 WHERE id = $2', [
+            lockUntil,
+            user.id,
+          ]);
+        }
 
         if (lockUntil) {
           sendError(
@@ -159,14 +203,14 @@ export class AuthController {
         [user.id]
       );
 
-      const token = generateToken({
+      const payload: JwtPayload = {
         userId: user.id,
         email: user.email,
         role: user.role,
-      });
+        mustChangePassword: Boolean(user.must_change_password || user.is_temporary_password),
+      };
 
-      // Check if user must change password
-      if (user.must_change_password || user.is_temporary_password) {
+      if (user.mfa_enabled) {
         sendSuccess(res, {
           user: {
             id: user.id,
@@ -174,22 +218,13 @@ export class AuthController {
             role: user.role,
             created_at: user.created_at,
           },
-          token,
-          must_change_password: true,
-          message: 'Login successful. You must change your password before continuing.',
+          mfa_required: true,
+          mfa_token: tokenService.createMFAChallenge(user.id),
         });
         return;
       }
 
-      sendSuccess(res, {
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          created_at: user.created_at,
-        },
-        token,
-      });
+      await this.establishSession(req, res, payload, user);
     } catch (error) {
       next(error);
     }
@@ -198,15 +233,21 @@ export class AuthController {
   /**
    * Get current user profile
    * GET /auth/me
-   * 
+   *
    * Security: Requires valid JWT token (middleware)
    */
   async getMe(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = req.user?.userId;
 
-      const result = await query<UserResponse>(
-        'SELECT id, email, role, created_at FROM users WHERE id = $1',
+      const result = await query<
+        UserResponse & {
+          mfa_enabled: boolean;
+          must_change_password: boolean | null;
+          is_temporary_password: boolean | null;
+        }
+      >(
+        'SELECT id, email, role, created_at, mfa_enabled, must_change_password, is_temporary_password FROM users WHERE id = $1',
         [userId]
       );
 
@@ -215,7 +256,15 @@ export class AuthController {
         return;
       }
 
-      sendSuccess(res, { user: result.rows[0] });
+      const profile = result.rows[0];
+      sendSuccess(res, {
+        user: {
+          ...profile,
+          must_change_password: Boolean(
+            profile.must_change_password || profile.is_temporary_password
+          ),
+        },
+      });
     } catch (error) {
       next(error);
     }
@@ -224,13 +273,290 @@ export class AuthController {
   /**
    * Logout user
    * POST /auth/logout
-   * 
+   *
    * Note: With JWT, logout is typically handled client-side by removing the token
    * This endpoint exists for consistency and can be extended for token blacklisting
    */
-  async logout(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      const refreshToken = getCookie(req.headers.cookie, 'refresh_token');
+      const sessionId = req.sessionId || getCookie(req.headers.cookie, 'session_id');
+      const refreshPayload = refreshToken
+        ? await tokenService.validateRefreshToken(refreshToken)
+        : null;
+      const userId = req.user?.userId || refreshPayload?.userId;
+      if (refreshToken) await tokenService.revokeRefreshToken(refreshToken);
+      if (userId) await tokenService.revokeAllUserTokens(userId);
+      if (sessionId) {
+        await csrfService.invalidateToken(sessionId);
+        await sessionService.terminateSession(sessionId);
+      }
+      clearAuthCookies(res);
       sendSuccess(res, null, 'Logged out successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** Rotate the refresh token stored in the httpOnly cookie. */
+  async refresh(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const refreshToken = getCookie(req.headers.cookie, 'refresh_token');
+      if (!refreshToken) {
+        sendError(res, 'Refresh token is required', 401, 'UNAUTHORIZED');
+        return;
+      }
+
+      const payload = await tokenService.validateRefreshToken(refreshToken);
+      if (!payload) {
+        clearAuthCookies(res);
+        sendError(res, 'Invalid or expired refresh token', 401, 'UNAUTHORIZED');
+        return;
+      }
+
+      // Refresh tokens may outlive the user (deletion) or the role (demotion):
+      // always rebuild the payload from the current database row.
+      const currentUser = await query<User>(
+        'SELECT id, email, role, must_change_password, is_temporary_password FROM users WHERE id = $1',
+        [payload.userId]
+      );
+      if (currentUser.rows.length === 0) {
+        await tokenService.revokeAllUserTokens(payload.userId);
+        clearAuthCookies(res);
+        sendError(res, 'Account no longer exists', 401, 'UNAUTHORIZED');
+        return;
+      }
+
+      const currentPayload: JwtPayload = {
+        userId: currentUser.rows[0].id,
+        email: currentUser.rows[0].email,
+        role: currentUser.rows[0].role,
+        mustChangePassword: Boolean(
+          currentUser.rows[0].must_change_password || currentUser.rows[0].is_temporary_password
+        ),
+      };
+
+      const tokens = await tokenService.rotateRefreshToken(refreshToken, currentPayload);
+      if (!tokens) {
+        // Another request already redeemed this refresh token (replay).
+        await tokenService.revokeAllUserTokens(currentPayload.userId);
+        clearAuthCookies(res);
+        sendError(res, 'Refresh token has already been used', 401, 'UNAUTHORIZED');
+        return;
+      }
+
+      const sessionId = getCookie(req.headers.cookie, 'session_id') || randomUUID();
+      if (await sessionService.getSession(sessionId)) {
+        await sessionService.updateActivity(sessionId);
+      } else {
+        await sessionService.createSession(sessionId, currentPayload, {
+          device: req.get('user-agent') || 'unknown',
+          ipAddress: req.ip || 'unknown',
+          userAgent: req.get('user-agent') || 'unknown',
+        });
+      }
+      const csrfToken = await csrfService.generateToken(sessionId);
+      setAuthCookies(res, tokens.accessToken, tokens.refreshToken, sessionId);
+      res.setHeader('X-CSRF-Token', csrfToken);
+      sendSuccess(res, { user: currentPayload });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async setupMFA(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        sendError(res, 'Authentication required', 401, 'UNAUTHORIZED');
+        return;
+      }
+      const result = await query<{ email: string }>('SELECT email FROM users WHERE id = $1', [
+        userId,
+      ]);
+      if (!result.rows[0]) {
+        sendError(res, 'User not found', 404);
+        return;
+      }
+      const setup = await (
+        await import('../services/mfa.service')
+      ).default.setupMFA(userId, result.rows[0].email);
+      sendSuccess(res, setup);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async verifyMFA(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+      const token = String(req.body.token || '');
+      if (!userId || !token) {
+        sendError(res, 'Authentication and MFA token are required', 400);
+        return;
+      }
+      const valid = await (
+        await import('../services/mfa.service')
+      ).default.verifyAndEnableMFA(userId, token);
+      if (!valid) {
+        sendError(res, 'Invalid MFA token', 400, 'INVALID_MFA_TOKEN');
+        return;
+      }
+      sendSuccess(res, null, 'Multi-factor authentication enabled');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async validateMFA(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const challengeToken = String(req.body.mfa_token || '');
+      const userId = tokenService.verifyMFAChallenge(challengeToken);
+      const token = String(req.body.token || '');
+      if (!userId || !token) {
+        sendError(res, 'Invalid MFA challenge', 401, 'UNAUTHORIZED');
+        return;
+      }
+      if (await this.tooManyMFAAttempts(userId)) {
+        sendError(
+          res,
+          'Too many verification attempts. Please sign in again later.',
+          429,
+          'MFA_LOCKED'
+        );
+        return;
+      }
+      if (!(await this.claimMFAChallenge(challengeToken))) {
+        sendError(
+          res,
+          'This verification session has already been used. Please sign in again.',
+          401,
+          'MFA_CHALLENGE_USED'
+        );
+        return;
+      }
+      const mfaService = (await import('../services/mfa.service')).default;
+      const valid = await mfaService.verifyTOTP(userId, token);
+      if (!valid) {
+        await this.recordMFAAttempt(userId, false);
+        sendError(res, 'Invalid MFA token', 401, 'INVALID_MFA_TOKEN');
+        return;
+      }
+      await this.recordMFAAttempt(userId, true);
+      const result = await query<User>('SELECT * FROM users WHERE id = $1', [userId]);
+      const user = result.rows[0];
+      if (!user) {
+        sendError(res, 'User not found', 404);
+        return;
+      }
+      await this.establishSession(
+        req,
+        res,
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          mustChangePassword: Boolean(user.must_change_password || user.is_temporary_password),
+        },
+        user
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async validateBackupCode(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const challengeToken = String(req.body.mfa_token || '');
+      const userId = tokenService.verifyMFAChallenge(challengeToken);
+      const code = String(req.body.code || '');
+      if (!userId || !code) {
+        sendError(res, 'Invalid MFA challenge', 401, 'UNAUTHORIZED');
+        return;
+      }
+      if (await this.tooManyMFAAttempts(userId)) {
+        sendError(
+          res,
+          'Too many verification attempts. Please sign in again later.',
+          429,
+          'MFA_LOCKED'
+        );
+        return;
+      }
+      if (!(await this.claimMFAChallenge(challengeToken))) {
+        sendError(
+          res,
+          'This verification session has already been used. Please sign in again.',
+          401,
+          'MFA_CHALLENGE_USED'
+        );
+        return;
+      }
+      const valid = await (
+        await import('../services/mfa.service')
+      ).default.verifyBackupCode(userId, code);
+      if (!valid) {
+        await this.recordMFAAttempt(userId, false);
+        sendError(res, 'Invalid backup code', 401, 'INVALID_BACKUP_CODE');
+        return;
+      }
+      await this.recordMFAAttempt(userId, true);
+      const result = await query<User>('SELECT * FROM users WHERE id = $1', [userId]);
+      const user = result.rows[0];
+      if (!user) {
+        sendError(res, 'User not found', 404);
+        return;
+      }
+      await this.establishSession(
+        req,
+        res,
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          mustChangePassword: Boolean(user.must_change_password || user.is_temporary_password),
+        },
+        user
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async disableMFA(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) {
+        sendError(res, 'Authentication required', 401, 'UNAUTHORIZED');
+        return;
+      }
+
+      // Disabling the second factor is a credential downgrade: require the
+      // account password so a stolen token alone cannot turn MFA off.
+      const password = String(req.body.password || '');
+      if (!password) {
+        sendError(
+          res,
+          'Password confirmation is required to disable MFA',
+          400,
+          'PASSWORD_REQUIRED'
+        );
+        return;
+      }
+      const result = await query<User>('SELECT password FROM users WHERE id = $1', [userId]);
+      if (!result.rows[0] || !(await comparePassword(password, result.rows[0].password))) {
+        sendError(res, 'Password is incorrect', 401, 'INVALID_PASSWORD');
+        return;
+      }
+
+      await (await import('../services/mfa.service')).default.disableMFA(userId);
+
+      // Any token minted while MFA was enabled must not survive the downgrade.
+      await tokenService.revokeAllUserTokens(userId);
+      await sessionService.terminateAllUserSessions(userId);
+      clearAuthCookies(res);
+
+      sendSuccess(res, null, 'Multi-factor authentication disabled. Please sign in again.');
     } catch (error) {
       next(error);
     }
@@ -239,7 +565,7 @@ export class AuthController {
   /**
    * Forgot Password - Request password reset
    * POST /auth/forgot-password
-   * 
+   *
    * Security Considerations:
    * - Does NOT reveal if email exists (always returns success)
    * - Generates cryptographically secure random token
@@ -253,10 +579,9 @@ export class AuthController {
 
       const sanitizedEmail = sanitizeEmail(email);
 
-      const result = await query<User>(
-        'SELECT id, email FROM users WHERE email = $1',
-        [sanitizedEmail]
-      );
+      const result = await query<User>('SELECT id, email FROM users WHERE email = $1', [
+        sanitizedEmail,
+      ]);
 
       // Security: Always return success even if user doesn't exist
       // This prevents email enumeration attacks
@@ -304,7 +629,7 @@ export class AuthController {
   /**
    * Reset Password - Complete password reset
    * POST /auth/reset-password
-   * 
+   *
    * Security Considerations:
    * - Verifies token hasn't expired
    * - Compares hashed token from database
@@ -316,15 +641,21 @@ export class AuthController {
     try {
       const { token, newPassword } = req.body;
 
-      // Hash the provided token to compare with database
+      // Hash the provided token to compare with the stored HMAC
       const hashedToken = await hashResetToken(token);
 
-      // Find user with matching reset token that hasn't expired
-      const result = await query<User>(
-        `SELECT id, email, reset_token, reset_token_expiry 
-         FROM users 
-         WHERE reset_token = $1 AND reset_token_expiry > NOW()`,
-        [hashedToken]
+      // Hash new password before the single atomic consumption below
+      const hashedPassword = await hashPassword(newPassword);
+
+      // Consume the token atomically: the UPDATE only matches a live token, so
+      // concurrent requests cannot both redeem it.
+      const result = await query<{ id: string }>(
+        `UPDATE users 
+         SET password = $1, reset_token = NULL, reset_token_expiry = NULL,
+             is_temporary_password = FALSE, must_change_password = FALSE
+         WHERE reset_token = $2 AND reset_token_expiry > NOW()
+         RETURNING id`,
+        [hashedPassword, hashedToken]
       );
 
       if (result.rows.length === 0) {
@@ -332,18 +663,9 @@ export class AuthController {
         return;
       }
 
-      const user = result.rows[0];
-
-      // Hash new password
-      const hashedPassword = await hashPassword(newPassword);
-
-      // Update password and clear reset token fields
-      await query(
-        `UPDATE users 
-         SET password = $1, reset_token = NULL, reset_token_expiry = NULL 
-         WHERE id = $2`,
-        [hashedPassword, user.id]
-      );
+      // A reset must evict any stolen refresh chain and live sessions.
+      await tokenService.revokeAllUserTokens(result.rows[0].id);
+      await sessionService.terminateAllUserSessions(result.rows[0].id);
 
       sendSuccess(res, null, 'Password reset successful. Please login with your new password.');
     } catch (error) {
@@ -354,7 +676,7 @@ export class AuthController {
   /**
    * Change Password - Change password for authenticated user
    * POST /auth/change-password
-   * 
+   *
    * Security Considerations:
    * - Requires authentication (user must be logged in)
    * - Verifies current password before allowing change
@@ -422,10 +744,46 @@ export class AuthController {
         // Continue even if email fails
       }
 
-      sendSuccess(res, null, 'Password changed successfully');
+      // A password change must evict every other refresh chain and session:
+      // otherwise a stolen token survives the rotation.
+      await tokenService.revokeAllUserTokens(user.id);
+      await sessionService.terminateAllUserSessions(user.id);
+      clearAuthCookies(res);
+
+      sendSuccess(res, null, 'Password changed successfully. Please sign in again.');
     } catch (error) {
       next(error);
     }
+  }
+
+  /**
+   * Claim an MFA challenge token exactly once. SADD returns 0 when the marker
+   * already exists, which makes the claim atomic across concurrent requests.
+   */
+  private async claimMFAChallenge(challengeToken: string): Promise<boolean> {
+    const marker = createHash('sha256').update(challengeToken).digest('hex');
+    const added = await redisClient.sadd(MFA_CHALLENGE_MARKER_KEY, marker);
+    if (added === 0) return false;
+
+    const pipeline = redisClient.pipeline();
+    pipeline.expire(MFA_CHALLENGE_MARKER_KEY, MFA_ATTEMPT_WINDOW_SECONDS);
+    await pipeline.exec();
+    return true;
+  }
+
+  private async tooManyMFAAttempts(userId: string): Promise<boolean> {
+    const raw = await redisClient.get(`mfa:failed:${userId}`);
+    return Number(raw || 0) >= MFA_ATTEMPT_LIMIT;
+  }
+
+  private async recordMFAAttempt(userId: string, success: boolean): Promise<void> {
+    const key = `mfa:failed:${userId}`;
+    if (success) {
+      await redisClient.del(key);
+      return;
+    }
+    const attempts = Number((await redisClient.get(key)) || 0) + 1;
+    await redisClient.setex(key, MFA_ATTEMPT_WINDOW_SECONDS, String(attempts));
   }
 }
 

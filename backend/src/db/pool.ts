@@ -3,7 +3,7 @@ import config from '../config/env';
 
 /**
  * PostgreSQL Connection Pool
- * 
+ *
  * Security & Performance Considerations:
  * - Uses connection pooling to reuse database connections
  * - Limits max connections to prevent resource exhaustion
@@ -17,6 +17,7 @@ const pool = new Pool({
   database: config.database.name,
   user: config.database.user,
   password: config.database.password,
+  min: 5,
   max: config.database.maxConnections,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -29,8 +30,10 @@ pool.on('connect', () => {
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Unexpected database error:', err);
-  process.exit(-1);
+  // pg emits this for idle clients (DB restart, failover, network reset).
+  // Log and let the pool discard the broken client; exiting here turns a
+  // transient infrastructure blip into a full API outage.
+  console.error('❌ Unexpected database error (idle client discarded):', err.message);
 });
 
 /**
@@ -41,15 +44,19 @@ export const query = async <T extends import('pg').QueryResultRow = any>(
   params?: unknown[]
 ): Promise<QueryResult<T>> => {
   const start = Date.now();
-  
+
   try {
     const result = await pool.query<T>(text, params);
-    
+
     if (config.isDevelopment) {
       const duration = Date.now() - start;
       console.log('📝 Query executed:', { text, duration: `${duration}ms`, rows: result.rowCount });
     }
-    
+
+    if (config.isDevelopment && Date.now() - start > 1000) {
+      console.warn('Slow database query detected:', { text, duration: `${Date.now() - start}ms` });
+    }
+
     return result;
   } catch (error) {
     console.error('❌ Database query error:', error);

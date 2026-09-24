@@ -6,21 +6,34 @@ dotenv.config();
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().default('5000'),
-  
+
   DB_HOST: z.string().default('localhost'),
   DB_PORT: z.string().default('5432'),
   DB_NAME: z.string().min(1, 'Database name is required'),
   DB_USER: z.string().min(1, 'Database user is required'),
   DB_PASSWORD: z.string().min(1, 'Database password is required'),
   DB_MAX_CONNECTIONS: z.string().default('20'),
-  
-  JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
+
+  JWT_SECRET: z
+    .string()
+    .min(32, 'JWT secret must be at least 32 characters')
+    .refine(
+      (value) =>
+        process.env.NODE_ENV === 'test' ||
+        !/(change-this|your-super-secret|placeholder|example|changeme)/i.test(value),
+      'JWT_SECRET still contains an example placeholder. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'hex\'))"'
+    ),
   JWT_EXPIRY: z.string().default('1h'),
-  
+
   ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
   RATE_LIMIT_WINDOW_MS: z.string().default('900000'),
   RATE_LIMIT_MAX_REQUESTS: z.string().default('100'),
   BCRYPT_ROUNDS: z.string().default('12'),
+
+  // Set to the number of trusted proxy hops (e.g. "1") only when the API sits
+  // behind a reverse proxy/CDN that overwrites X-Forwarded-For. False = ignore
+  // forwarding headers entirely.
+  TRUST_PROXY: z.string().default('false'),
   
   EMAIL_HOST: z.string().default('smtp.gmail.com'),
   EMAIL_PORT: z.string().transform(val => parseInt(val, 10)).default('587'),
@@ -31,6 +44,9 @@ const envSchema = z.object({
   
   FRONTEND_URL: z.string().default('http://localhost:3000'),
   RESET_TOKEN_EXPIRY: z.string().default('3600000'),
+
+  REDIS_URL: z.string().optional(),
+  REDIS_MODE: z.enum(['redis', 'memory']).optional(),
 });
 
 const parseEnv = () => {
@@ -62,7 +78,7 @@ export const config = {
     password: env.DB_PASSWORD,
     maxConnections: parseInt(env.DB_MAX_CONNECTIONS, 10),
   },
-  
+
   jwt: {
     secret: env.JWT_SECRET,
     expiry: env.JWT_EXPIRY,
@@ -98,6 +114,12 @@ export const config = {
     expiry: parseInt(env.RESET_TOKEN_EXPIRY, 10),
   },
   
+  redis: {
+    url: env.REDIS_URL || '',
+  },
+
+  trustProxy: env.TRUST_PROXY === 'true' ? true : /^\d+$/.test(env.TRUST_PROXY) ? parseInt(env.TRUST_PROXY, 10) : false,
+
   isDevelopment: env.NODE_ENV === 'development',
   isProduction: env.NODE_ENV === 'production',
 } as const;

@@ -7,6 +7,9 @@ import { sanitizeEmail } from '../utils/sanitize';
 import { generateTemporaryPassword, getTempPasswordExpiry } from '../utils/tempPassword';
 import { sendTemporaryPasswordEmail } from '../utils/email';
 import notificationService from '../services/notification.service';
+import tokenService from '../services/token.service';
+import sessionService from '../services/session.service';
+import { safeNotify } from '../utils/safeNotify';
 
 /**
  * User Controller
@@ -61,13 +64,24 @@ export class UserController {
         paramCount++;
       }
 
-      queryText += ' ORDER BY created_at DESC';
+      const countResult = await query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM users WHERE ${queryText.split(' WHERE ')[1]}`,
+        queryParams
+      );
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
+      const offset = (page - 1) * limit;
+      queryText += ` ORDER BY created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+      queryParams.push(limit, offset);
 
       const result = await query<UserResponse>(queryText, queryParams);
 
       sendSuccess(res, {
         users: result.rows,
-        total: result.rows.length,
+        total: Number(countResult.rows[0]?.count || 0),
+        page,
+        limit,
+        has_more: offset + result.rows.length < Number(countResult.rows[0]?.count || 0),
       });
     } catch (error) {
       next(error);
@@ -101,7 +115,7 @@ export class UserController {
   /**
    * Create new user (Admin only)
    * POST /api/users
-   * 
+   *
    * Security:
    * - Generates secure temporary password
    * - Sends temporary password via email
@@ -116,10 +130,9 @@ export class UserController {
       const sanitizedEmail = sanitizeEmail(email);
 
       // Check if user already exists
-      const existingUser = await query<User>(
-        'SELECT id FROM users WHERE email = $1',
-        [sanitizedEmail]
-      );
+      const existingUser = await query<User>('SELECT id FROM users WHERE email = $1', [
+        sanitizedEmail,
+      ]);
 
       if (existingUser.rows.length > 0) {
         sendError(res, 'User with this email already exists', 409);
@@ -156,17 +169,13 @@ export class UserController {
         console.error('Failed to send temporary password email:', emailError);
         // Rollback user creation if email fails
         await query('DELETE FROM users WHERE id = $1', [newUser.id]);
-        sendError(
-          res,
-          'Failed to send temporary password email. User creation rolled back.',
-          500
-        );
+        sendError(res, 'Failed to send temporary password email. User creation rolled back.', 500);
         return;
       }
 
       sendSuccess(
         res,
-        { 
+        {
           user: newUser,
           message: `User created successfully. Temporary password sent to ${sanitizedEmail}`,
         },
@@ -187,10 +196,7 @@ export class UserController {
       const { id } = req.params;
       const { email, password, role } = req.body;
 
-      const existingUser = await query<User>(
-        'SELECT * FROM users WHERE id = $1',
-        [id]
-      );
+      const existingUser = await query<User>('SELECT * FROM users WHERE id = $1', [id]);
 
       if (existingUser.rows.length === 0) {
         sendError(res, 'User not found', 404);
@@ -203,10 +209,10 @@ export class UserController {
 
       if (email) {
         const sanitizedEmail = sanitizeEmail(email);
-        const emailCheck = await query<User>(
-          'SELECT id FROM users WHERE email = $1 AND id != $2',
-          [sanitizedEmail, id]
-        );
+        const emailCheck = await query<User>('SELECT id FROM users WHERE email = $1 AND id != $2', [
+          sanitizedEmail,
+          id,
+        ]);
 
         if (emailCheck.rows.length > 0) {
           sendError(res, 'Email already in use by another user', 409);
@@ -245,13 +251,21 @@ export class UserController {
       );
 
       // Notify admins about user update
-      await notificationService.notifyUserEvent(
-        'user_updated',
-        result.rows[0].id,
-        result.rows[0].email,
-        result.rows[0].role,
-        'low'
+      safeNotify(
+        notificationService.notifyUserEvent(
+          'user_updated',
+          result.rows[0].id,
+          result.rows[0].email,
+          result.rows[0].role,
+          'low'
+        ),
+        'user_updated'
       );
+
+      // Identity or authorization changes invalidate existing credentials: the
+      // user must sign in again so tokens carry the current email/role.
+      await tokenService.revokeAllUserTokens(id);
+      await sessionService.terminateAllUserSessions(id);
 
       sendSuccess(res, { user: result.rows[0] }, 'User updated successfully');
     } catch (error) {
@@ -262,7 +276,7 @@ export class UserController {
   /**
    * Resend temporary password (Admin only)
    * POST /api/users/:id/resend-temporary-password
-   * 
+   *
    * Security:
    * - Generates new secure temporary password
    * - Invalidates previous temporary password
@@ -293,6 +307,19 @@ export class UserController {
       const hashedPassword = await hashPassword(temporaryPassword);
       const tempPasswordExpiry = getTempPasswordExpiry(expiryHours);
 
+      // Snapshot the credential state so a failed email does not leave the user
+      // with a password only the server knows.
+      const previousState = await query<{
+        password: string;
+        is_temporary_password: boolean;
+        temp_password_expires_at: Date | null;
+        must_change_password: boolean;
+      }>(
+        'SELECT password, is_temporary_password, temp_password_expires_at, must_change_password FROM users WHERE id = $1',
+        [id]
+      );
+      const previous = previousState.rows[0];
+
       // Update user with new temporary password
       await query(
         `UPDATE users 
@@ -312,9 +339,21 @@ export class UserController {
         console.log(`✅ Temporary password resent to: ${user.email} (ID: ${user.id})`);
       } catch (emailError) {
         console.error('Failed to send temporary password email:', emailError);
+        await query(
+          `UPDATE users
+           SET password = $1, is_temporary_password = $2, temp_password_expires_at = $3, must_change_password = $4
+           WHERE id = $5`,
+          [
+            previous.password,
+            previous.is_temporary_password,
+            previous.temp_password_expires_at,
+            previous.must_change_password,
+            user.id,
+          ]
+        );
         sendError(
           res,
-          'Failed to send temporary password email. Please try again.',
+          'Failed to send temporary password email. Existing credentials were left unchanged.',
           500
         );
         return;
@@ -322,7 +361,7 @@ export class UserController {
 
       sendSuccess(
         res,
-        { 
+        {
           message: `New temporary password sent to ${user.email}`,
         },
         'Temporary password resent successfully'
@@ -357,13 +396,20 @@ export class UserController {
       }
 
       // Notify admins about user deletion
-      await notificationService.notifyUserEvent(
-        'user_deleted',
-        result.rows[0].id,
-        result.rows[0].email,
-        result.rows[0].role,
-        'medium'
+      safeNotify(
+        notificationService.notifyUserEvent(
+          'user_deleted',
+          result.rows[0].id,
+          result.rows[0].email,
+          result.rows[0].role,
+          'medium'
+        ),
+        'user_deleted'
       );
+
+      // A deleted account must not retain a usable refresh chain or session.
+      await tokenService.revokeAllUserTokens(id);
+      await sessionService.terminateAllUserSessions(id);
 
       sendSuccess(res, { user: result.rows[0] }, 'User deleted successfully');
     } catch (error) {
@@ -377,8 +423,10 @@ export class UserController {
    */
   async getUserStats(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const totalUsersResult = await query<{ count: string }>('SELECT COUNT(*) as count FROM users');
-      
+      const totalUsersResult = await query<{ count: string }>(
+        'SELECT COUNT(*) as count FROM users'
+      );
+
       const roleBreakdown = await query<{ role: string; count: string }>(
         'SELECT role, COUNT(*) as count FROM users GROUP BY role'
       );

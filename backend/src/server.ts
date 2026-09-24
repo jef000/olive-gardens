@@ -8,8 +8,12 @@ import config from './config/env';
 import { testConnection, closePool } from './db/pool';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
-import { apiLimiter } from './middleware/rateLimiter';
+import { standardRateLimiter } from './middleware/enhancedRateLimiter';
 import { auditContextMiddleware, auditLogMiddleware } from './middleware/audit.middleware';
+import { securityHeaders } from './middleware/securityHeaders';
+import csrfMiddleware from './middleware/csrf.middleware';
+import { cspDirectives } from './config/csp';
+import inquiryReplyService from './services/inquiryReply.service';
 
 /**
  * Express Application Setup
@@ -17,6 +21,10 @@ import { auditContextMiddleware, auditLogMiddleware } from './middleware/audit.m
  */
 
 const app: Application = express();
+
+// Only honor X-Forwarded-For when a trusted proxy is configured; otherwise the
+// rate limiter and audit log key on the socket address (anti-spoofing).
+app.set('trust proxy', config.trustProxy);
 
 /**
  * Security Middleware
@@ -27,10 +35,11 @@ const app: Application = express();
  */
 app.use(
   helmet({
-    contentSecurityPolicy: false, // Disabled to allow images to load from local IP
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow loading static resources from other origins
+    contentSecurityPolicy: { directives: cspDirectives },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
+app.use(securityHeaders);
 
 app.use(
   cors({
@@ -41,6 +50,7 @@ app.use(
       const allowedOrigins = [
         ...config.cors.allowedOrigins,
         'http://localhost:5173',
+        'http://localhost:5174',
         'http://localhost:8080',
       ];
       
@@ -53,7 +63,8 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    exposedHeaders: ['X-CSRF-Token'],
   })
 );
 
@@ -68,9 +79,26 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 /**
- * Static Files serving (for local uploads)
+ * Securely serve processed gallery files through an explicit endpoint. The
+ * storage directory is not exposed as a static web root.
  */
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+const secureUploadDir = path.join(__dirname, '../uploads/secure');
+app.get('/uploads/secure/:filename', (req, res, next) => {
+  const filename = path.basename(req.params.filename);
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.sendFile(filename, { root: secureUploadDir }, (error) => {
+    if (error) next(error);
+  });
+});
+
+/**
+ * Static files serving for legacy/public uploads.
+ */
+app.use('/uploads', express.static(path.join(__dirname, '../uploads/public'), {
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  },
+}));
 
 /**
  * Logging Middleware
@@ -81,14 +109,17 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 if (config.isDevelopment) {
   app.use(morgan('dev'));
 } else {
-  app.use(morgan('combined'));
+app.use(morgan('combined'));
 }
+
+// CSRF tokens are issued for safe requests and checked for state changes.
+app.use(csrfMiddleware);
 
 /**
  * Rate Limiting
  * Applied globally to all routes
  */
-app.use(apiLimiter);
+app.use(standardRateLimiter);
 
 /**
  * Audit Trail Middleware
@@ -101,6 +132,10 @@ app.use(auditLogMiddleware);
  * API Routes
  */
 app.use('/api', routes);
+
+app.post('/api/csp-report', (_req, res) => {
+  res.status(204).end();
+});
 
 /**
  * Root endpoint
@@ -140,6 +175,14 @@ const startServer = async () => {
       console.log('🔗 API URL: http://localhost:' + config.port + '/api');
       console.log('💾 Database:', config.database.name);
     });
+
+    // Re-attempt replies that were queued when the process last stopped.
+    void inquiryReplyService
+      .recoverQueued()
+      .then((count) => {
+        if (count > 0) console.log(`🔁 Re-queued ${count} pending inquiry ${count === 1 ? 'reply' : 'replies'}`);
+      })
+      .catch((error) => console.error('❌ Failed to recover queued inquiry replies:', error));
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);

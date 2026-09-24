@@ -9,7 +9,9 @@ import { sendError } from '../utils/response';
 export const validate = (schema: ZodSchema) => {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      await schema.parseAsync(req.body);
+      // Use the parsed output, not the raw body: Zod strips unknown keys and
+      // applies defaults/coercions, so handlers never see extra fields.
+      req.body = await schema.parseAsync(req.body);
       next();
     } catch (error) {
       if (error instanceof z.ZodError) {

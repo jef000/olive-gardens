@@ -15,9 +15,18 @@ export class AppError extends Error {
   }
 }
 
+function isPostgresError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    typeof (error as { code?: unknown }).code === 'string' &&
+    /^[0-9A-Z]{5}$/.test((error as { code: string }).code)
+  );
+}
+
 /**
  * Global error handling middleware
- * 
+ *
  * Security Considerations:
  * - Hides internal error details in production
  * - Logs errors for debugging
@@ -46,6 +55,44 @@ export const errorHandler = (
     statusCode = 401;
     message = 'Invalid or expired token';
     error = 'INVALID_TOKEN';
+  } else if (err.name === 'MulterError' || /Only JPEG|File too large/i.test(err.message)) {
+    statusCode = 400;
+    message = err.message;
+    error = 'INVALID_UPLOAD';
+  } else if (
+    (err as { type?: string }).type === 'entity.parse.failed' ||
+    (err instanceof SyntaxError && 'body' in err)
+  ) {
+    statusCode = 400;
+    message = 'Malformed JSON body';
+    error = 'INVALID_JSON';
+  } else if (isPostgresError(err)) {
+    // Map common database errors to client-facing statuses instead of 500.
+    const mapped: Record<string, { statusCode: number; message: string; error: string }> = {
+      '22P02': { statusCode: 400, message: 'Invalid input format', error: 'INVALID_INPUT' },
+      '23502': { statusCode: 400, message: 'A required field is missing', error: 'MISSING_FIELD' },
+      '23503': {
+        statusCode: 409,
+        message: 'Referenced record does not exist',
+        error: 'FOREIGN_KEY_VIOLATION',
+      },
+      '23505': {
+        statusCode: 409,
+        message: 'A record with these details already exists',
+        error: 'DUPLICATE_RECORD',
+      },
+      '23514': {
+        statusCode: 400,
+        message: 'A value violates a database constraint',
+        error: 'CONSTRAINT_VIOLATION',
+      },
+    };
+    const match = mapped[(err as { code?: string }).code ?? ''];
+    if (match) {
+      statusCode = match.statusCode;
+      message = match.message;
+      error = match.error;
+    }
   }
 
   if (config.isDevelopment) {
