@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { Inquiry } from '../types';
 import { useToast } from '../hooks/use-toast';
+import { confirm } from '../lib/confirm';
 import {
   Table,
   TableBody,
@@ -20,7 +21,9 @@ import {
 } from '../components/ui/select';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { Trash2, Eye, Mail, Phone, Calendar } from 'lucide-react';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Trash2, Eye, Mail, Phone, Calendar, Search, Loader2, FilterX, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -28,55 +31,77 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "../components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "../components/ui/alert-dialog";
 import { format } from 'date-fns';
+import EmptyState from '../components/EmptyState';
+import Avatar from '../components/Avatar';
+import InquiryReplyPanel from '../components/InquiryReplyPanel';
+import { TableSkeleton } from '../components/ui/skeleton';
+import { useOptimisticUpdate } from '../hooks/useOptimisticUpdate';
+import PageIntro from '../components/PageIntro';
+import {
+  buildInquiryParams,
+  hasActiveInquiryFilters,
+  inquiryYearOptions,
+  type InquiryListPayload,
+  type InquiryQueryState,
+} from '../lib/inquiryQuery';
 
-const fetchInquiries = async (status?: string) => {
-  const params = status && status !== 'all' ? { status } : {};
-  const response = await api.get('/inquiries', { params });
-  return response.data.data.inquiries as Inquiry[];
+const PAGE_SIZE = 20;
+
+const fetchInquiries = async (query: InquiryQueryState): Promise<InquiryListPayload> => {
+  const response = await api.get('/inquiries', { params: buildInquiryParams(query) });
+  return response.data.data as InquiryListPayload;
 };
 
 export default function Inquiries() {
   const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedInquiry, setSelectedInquiry] = useState<Inquiry | null>(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [yearFilter, setYearFilter] = useState('all');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [page, setPage] = useState(1);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: inquiries, isLoading } = useQuery({
-    queryKey: ['inquiries', statusFilter],
-    queryFn: () => fetchInquiries(statusFilter),
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const queryState: InquiryQueryState = {
+    status: statusFilter,
+    search: debouncedSearch,
+    year: yearFilter,
+    from,
+    to,
+    page,
+    limit: PAGE_SIZE,
+  };
+  const queryKey = ['inquiries', statusFilter, debouncedSearch, yearFilter, from, to, page] as const;
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey,
+    queryFn: () => fetchInquiries(queryState),
   });
 
-  const updateStatusMutation = useMutation({
+  const inquiries = data?.inquiries ?? [];
+  const pagination = data?.pagination;
+  const years = inquiryYearOptions(data?.years ?? []);
+  const filtersActive = hasActiveInquiryFilters({ status: statusFilter, search, year: yearFilter, from, to });
+  const rangeInvalid = Boolean(from && to && from > to);
+
+  const updateStatusMutation = useOptimisticUpdate<Inquiry[], { id: string; status: string }>({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       const response = await api.patch(`/inquiries/${id}/status`, { status });
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inquiries'] });
-      toast({
-        title: 'Status Updated',
-        description: 'The inquiry status has been successfully updated.',
-      });
-    },
-    onError: () => {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to update inquiry status.',
-      });
-    },
+    queryKey,
+    update: (current, variables) => current?.map((inquiry) => inquiry.id === variables.id ? { ...inquiry, status: variables.status as Inquiry['status'] } : inquiry),
+    successMessage: 'Inquiry status updated',
   });
 
   const deleteMutation = useMutation({
@@ -89,7 +114,6 @@ export default function Inquiries() {
         title: 'Inquiry Deleted',
         description: 'The inquiry has been successfully deleted.',
       });
-      setSelectedInquiry(null);
     },
     onError: () => {
       toast({
@@ -99,6 +123,16 @@ export default function Inquiries() {
       });
     },
   });
+
+  const clearFilters = () => {
+    setStatusFilter('all');
+    setSearch('');
+    setDebouncedSearch('');
+    setYearFilter('all');
+    setFrom('');
+    setTo('');
+    setPage(1);
+  };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -110,63 +144,125 @@ export default function Inquiries() {
     return <Badge variant={variants[status] || 'default'}>{status.toUpperCase()}</Badge>;
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Inquiries</h1>
-          <p className="text-gray-500 mt-2">Manage customer messages and contact requests.</p>
-        </div>
-        <div className="w-48">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger>
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Inquiries</SelectItem>
-              <SelectItem value="new">New</SelectItem>
-              <SelectItem value="read">Read</SelectItem>
-              <SelectItem value="replied">Replied</SelectItem>
-              <SelectItem value="archived">Archived</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <PageIntro
+        eyebrow="Guest communication"
+        title="Inquiries"
+        description="Manage customer messages and contact requests."
+      />
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-gray-50/50">
-              <TableHead>Date</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Contact Info</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {inquiries?.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-gray-500">
-                  No inquiries found matching the current filter.
-                </TableCell>
+      <div className="glass overflow-hidden rounded-2xl">
+        <div className="flex flex-wrap items-end gap-3 border-b border-gray-100 p-4">
+          <div className="min-w-[220px] flex-1 space-y-1.5">
+            <Label htmlFor="inquiry-search">Search</Label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+              <Input
+                id="inquiry-search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Name, email, phone, or message"
+                className="pl-9"
+              />
+            </div>
+          </div>
+
+          <div className="w-full space-y-1.5 sm:w-40">
+            <Label htmlFor="inquiry-status">Status</Label>
+            <Select value={statusFilter} onValueChange={(value) => { setStatusFilter(value); setPage(1); }}>
+              <SelectTrigger id="inquiry-status">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="new">New</SelectItem>
+                <SelectItem value="read">Read</SelectItem>
+                <SelectItem value="replied">Replied</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="w-full space-y-1.5 sm:w-36">
+            <Label htmlFor="inquiry-year">Year</Label>
+            <Select value={yearFilter} onValueChange={(value) => { setYearFilter(value); setFrom(''); setTo(''); setPage(1); }}>
+              <SelectTrigger id="inquiry-year">
+                <SelectValue placeholder="Year" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All years</SelectItem>
+                {years.map((year) => (
+                  <SelectItem key={year} value={String(year)}>{year}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="inquiry-from">From</Label>
+            <Input id="inquiry-from" type="date" value={from} max={to || undefined} onChange={(event) => { setFrom(event.target.value); setYearFilter('all'); setPage(1); }} className="w-full sm:w-40" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="inquiry-to">To</Label>
+            <Input id="inquiry-to" type="date" value={to} min={from || undefined} onChange={(event) => { setTo(event.target.value); setYearFilter('all'); setPage(1); }} className="w-full sm:w-40" />
+          </div>
+
+          <Button type="button" variant="ghost" onClick={clearFilters} disabled={!filtersActive} className="h-11">
+            <FilterX className="mr-2 h-4 w-4" aria-hidden="true" />
+            Clear
+          </Button>
+        </div>
+
+        {rangeInvalid && (
+          <p className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-700" role="alert">
+            The start date must be on or before the end date.
+          </p>
+        )}
+
+        <div className="flex items-center justify-between gap-3 px-4 pt-3 text-xs text-gray-500">
+          <span aria-live="polite">
+            {pagination ? `${pagination.total} ${pagination.total === 1 ? 'inquiry' : 'inquiries'}` : 'Loading inquiries…'}
+          </span>
+          {isFetching && !isLoading && (
+            <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> Updating…</span>
+          )}
+        </div>
+
+        {isLoading ? (
+          <TableSkeleton rows={6} columns={5} />
+        ) : inquiries.length === 0 ? (
+          <div className="p-4">
+            <EmptyState
+              title="No inquiries found"
+              description={filtersActive ? 'No messages match the current search and filters.' : 'There are no customer messages yet.'}
+              actionLabel={filtersActive ? 'Clear filters' : undefined}
+              onAction={filtersActive ? clearFilters : undefined}
+            />
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gray-50/50">
+                <TableHead>Date</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Contact Info</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
-            ) : (
-              inquiries?.map((inquiry) => (
+            </TableHeader>
+            <TableBody>
+              {inquiries.map((inquiry) => (
                 <TableRow key={inquiry.id}>
                   <TableCell className="font-medium">
                     {format(new Date(inquiry.created_at), 'MMM d, yyyy')}
                   </TableCell>
                   <TableCell>
-                    {inquiry.first_name} {inquiry.last_name}
+                    <div className="flex items-center gap-3">
+                      <Avatar name={`${inquiry.first_name} ${inquiry.last_name}`} size="sm" />
+                      <span className="font-medium text-gray-900 dark:text-white">{inquiry.first_name} {inquiry.last_name}</span>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="text-sm text-gray-600">
@@ -253,42 +349,54 @@ export default function Inquiries() {
                             </div>
                           </div>
 
+                          <InquiryReplyPanel inquiry={inquiry} />
+
                           <div className="flex justify-end gap-2 pt-4 border-t border-gray-100">
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="destructive" size="sm">
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Inquiry
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    This action cannot be undone. This will permanently delete this inquiry.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction 
-                                    className="bg-red-600 hover:bg-red-700"
-                                    onClick={() => deleteMutation.mutate(inquiry.id)}
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={async () => {
+                                const approved = await confirm({
+                                  title: 'Delete this inquiry?',
+                                  undoable: false,
+                                  confirmLabel: 'Delete',
+                                });
+                                if (approved) {
+                                  deleteMutation.mutate(inquiry.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Inquiry
+                            </Button>
                           </div>
                         </div>
                       </DialogContent>
                     </Dialog>
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-3">
+            <p className="text-xs text-gray-500">
+              Page {pagination.page} of {pagination.totalPages}
+            </p>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" disabled={page <= 1 || isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+                <ChevronLeft className="mr-1 h-4 w-4" aria-hidden="true" />
+                Previous
+              </Button>
+              <Button type="button" variant="outline" size="sm" disabled={page >= pagination.totalPages || isFetching} onClick={() => setPage((current) => current + 1)}>
+                Next
+                <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

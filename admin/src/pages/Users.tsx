@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Edit, Trash2, Users as UsersIcon, Shield, ShieldAlert, Mail, Calendar, Key, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
 import type { User, ApiResponse } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import Avatar from '@/components/Avatar';
 import {
   Table,
   TableBody,
@@ -31,6 +32,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format } from 'date-fns';
+import BulkActionBar from '@/components/BulkActionBar';
+import EmptyState from '@/components/EmptyState';
+import ExportDialog from '@/components/ExportDialog';
+import { TableSkeleton } from '@/components/ui/skeleton';
+import { useBulkSelection } from '@/hooks/useBulkSelection';
+import { highlightText } from '@/lib/highlighter';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useBulkDelete } from '@/hooks/useBulkDelete';
+import { confirm } from '@/lib/confirm';
+import { createEntityListCache } from '@/lib/entityListCache';
+import { scheduleUndoableOperation } from '@/lib/undoableOperations';
+import InfiniteScrollFooter from '@/components/InfiniteScrollFooter';
+import ProgressModal from '@/components/ProgressModal';
+import PageIntro from '@/components/PageIntro';
 
 export default function Users() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,6 +53,7 @@ export default function Users() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     email: '',
@@ -45,30 +61,76 @@ export default function Users() {
     role: 'user' as 'user' | 'admin' | 'moderator',
   });
 
-  const { data: usersData, isLoading, refetch } = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => {
-      try {
-        const response = await api.get<ApiResponse<{ users: User[] }>>('/users');
-        const payload = response.data.data;
-        if (payload && Array.isArray(payload.users)) {
-          return payload.users;
-        }
-
-        console.warn('Unexpected payload shape for /users, falling back to sanitized array', payload);
-        return [];
-      } catch (error) {
-        console.error('Failed to fetch users:', error);
-        return [];
+  const { data: usersData, isLoading, isError, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: ['users', searchTerm],
+    queryFn: async ({ pageParam }) => {
+      const response = await api.get<ApiResponse<{ users: User[]; total: number; page: number; has_more: boolean }>>('/users', { params: { search: searchTerm || undefined, page: pageParam, limit: 25 } });
+      const payload = response.data.data;
+      if (payload && Array.isArray(payload.users)) {
+        return payload;
       }
+
+      console.warn('Unexpected payload shape for /users, falling back to sanitized array', payload);
+      return { users: [], total: 0, page: pageParam, has_more: false };
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.page + 1 : undefined,
   });
 
-  const normalizedUsers = Array.isArray(usersData) ? usersData : [];
+  const normalizedUsers = useMemo(() => usersData?.pages.flatMap((page) => page.users) || [], [usersData]);
 
-  const filteredUsers = normalizedUsers.filter((user) =>
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const bulk = useBulkSelection(normalizedUsers);
+  const { sentinelRef } = useInfiniteScroll(() => { void fetchNextPage(); }, Boolean(hasNextPage), isFetchingNextPage);
+  const exportRows = useMemo(() => normalizedUsers.map((user) => ({ email: user.email, role: user.role, joined: user.created_at, id: user.id })), [normalizedUsers]);
+  const queryClient = useQueryClient();
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+  const [bulkRole, setBulkRole] = useState<'user' | 'moderator' | 'admin'>('moderator');
+
+  interface UserListPage {
+    users: User[];
+    total: number;
+    page?: number;
+    has_more?: boolean;
+  }
+
+  const userListCache = useMemo(
+    () =>
+      createEntityListCache<UserListPage, User>({
+        queryClient,
+        queryKey: ['users', searchTerm],
+        getItems: (page) => page.users,
+        setItems: (page, users) => ({ ...page, users }),
+      }),
+    [queryClient, searchTerm]
   );
+
+  const bulkDelete = useBulkDelete({
+    noun: 'users',
+    deleteOne: (id) => api.delete(`/users/${id}`),
+    list: userListCache,
+    refetch,
+  });
+
+  const deleteSelected = async () => {
+    if (await bulkDelete.run(new Set(bulk.selectedIds))) {
+      bulk.clearSelection();
+    }
+  };
+
+  const changeSelectedRole = async () => {
+    if (!bulk.selectedCount) return;
+    try {
+      const results = await Promise.allSettled([...bulk.selectedIds].map((id) => api.put(`/users/${id}`, { role: bulkRole })));
+      const failed = results.filter((result) => result.status === 'rejected').length;
+      if (failed > 0) {
+        alert(`${failed} of ${results.length} role changes failed. The list has been refreshed.`);
+      }
+      bulk.clearSelection();
+      setRoleDialogOpen(false);
+    } finally {
+      await refetch();
+    }
+  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,8 +140,8 @@ export default function Users() {
       setIsCreateDialogOpen(false);
       setFormData({ email: '', password: '', role: 'user' });
       refetch();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to create user');
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Failed to create user');
     } finally {
       setIsSubmitting(false);
     }
@@ -101,7 +163,7 @@ export default function Users() {
     
     setIsSubmitting(true);
     try {
-      const payload: any = { role: formData.role };
+      const payload: { role: User['role']; password?: string } = { role: formData.role };
       if (formData.password) {
         payload.password = formData.password;
       }
@@ -111,22 +173,34 @@ export default function Users() {
       setEditingUserId(null);
       setFormData({ email: '', password: '', role: 'user' });
       refetch();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to update user');
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Failed to update user');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to remove this user from the system?')) return;
-    
-    try {
-      await api.delete(`/users/${userId}`);
-      refetch();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to delete user');
-    }
+    const approved = await confirm({
+      title: 'Remove this user?',
+      undoable: true,
+      confirmLabel: 'Remove',
+      variant: 'destructive',
+    });
+    if (!approved) return;
+    userListCache.remove(new Set([userId]));
+    scheduleUndoableOperation({
+      label: 'User deleted',
+      cancel: () => void refetch(),
+      commit: async () => {
+        try {
+          await api.delete(`/users/${userId}`);
+        } catch (error: unknown) {
+          alert(error instanceof Error ? error.message : 'Failed to delete user');
+        }
+        await refetch();
+      },
+    });
   };
 
   const getRoleBadge = (role: string) => {
@@ -139,7 +213,7 @@ export default function Users() {
         );
       case 'moderator':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-[#8b9172]/20 text-[#6a7051] border border-[#8b9172]/30">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-brand-100 text-brand-700 border border-brand-200 dark:bg-brand-900/40 dark:text-brand-300 dark:border-brand-700/50">
             <Shield size={12} /> Event Manager
           </span>
         );
@@ -161,30 +235,27 @@ export default function Users() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-serif text-gray-900">User Management</h1>
-          <p className="text-gray-600 mt-2 font-light">Control system access, team roles, and client accounts</p>
-        </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)} className="bg-[#8b9172] hover:bg-[#6a7051] text-white w-full sm:w-auto">
-          <Plus className="w-4 h-4 mr-2" />
-          Add New User
-        </Button>
-      </div>
+      <PageIntro
+        eyebrow="Access management"
+        title="User Management"
+        description="Control system access, team roles, and client accounts."
+        actions={<Button onClick={() => setIsCreateDialogOpen(true)} className="w-full bg-gradient-to-r from-brand-600 to-brand-500 text-white shadow-brand transition hover:shadow-brand-lg hover:brightness-105 sm:w-auto"><Plus className="mr-2 h-4 w-4" />Add New User</Button>}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => (
-          <Card key={index} className="border-border/50 shadow-sm">
-            <CardContent className="pt-6">
+          <Card key={index} className="glass card-hover relative overflow-hidden">
+            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-400 via-brand-500 to-gold-400" aria-hidden="true" />
+            <CardContent className="pt-7">
               <div className={`text-3xl font-bold font-serif mb-1 ${stat.color}`}>{stat.value}</div>
-              <div className="text-sm text-gray-500 font-medium uppercase tracking-wider">{stat.label}</div>
+              <div className="text-sm text-gray-500 font-medium uppercase tracking-wider dark:text-gray-400">{stat.label}</div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="border-border/50 shadow-sm">
-        <CardHeader className="border-b border-border/50 pb-4">
+      <Card className="glass overflow-hidden">
+        <CardHeader className="border-b border-gray-200/60 pb-4 dark:border-white/10">
           <CardTitle className="font-serif text-xl">Directory</CardTitle>
           <div className="flex items-center gap-4 mt-4">
             <div className="relative flex-1 w-full max-w-md">
@@ -200,15 +271,23 @@ export default function Users() {
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="text-center py-16">
-              <div className="w-12 h-12 border-4 border-[#8b9172]/30 border-t-[#8b9172] rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-500 font-light">Loading user directory...</p>
-            </div>
-          ) : (
+              <TableSkeleton rows={6} columns={4} />
+            ) : isError ? (
+              <div className="p-4">
+                <EmptyState
+                  title="Could not load users"
+                  description="The directory request failed. Check your connection and try again."
+                  actionLabel="Retry"
+                  onAction={() => void refetch()}
+                />
+              </div>
+            ) : (
             <div className="overflow-x-auto">
+              <div className="sr-only" aria-live="polite">{normalizedUsers.length} users found</div>
               <Table>
                 <TableHeader className="bg-gray-50/50">
                   <TableRow>
+                    <TableHead className="pl-6 w-10"><input type="checkbox" aria-label="Select all users" checked={bulk.allSelected} onChange={bulk.toggleAll} /></TableHead>
                     <TableHead className="pl-6 w-[350px]">Account</TableHead>
                     <TableHead>System Role</TableHead>
                     <TableHead>Joined Date</TableHead>
@@ -216,22 +295,19 @@ export default function Users() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredUsers?.length === 0 ? (
+                  {normalizedUsers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-10 text-gray-500 font-light">
-                        No users found matching your search.
-                      </TableCell>
+                      <TableCell colSpan={5} className="py-10"><EmptyState title="No users found" description={searchTerm ? 'Try a different email search.' : 'Add a user to get started.'} actionLabel={searchTerm ? 'Clear search' : 'Add user'} onAction={() => searchTerm ? setSearchTerm('') : setIsCreateDialogOpen(true)} /></TableCell>
                     </TableRow>
                   ) : (
-                    filteredUsers?.map((user) => (
+                    normalizedUsers.map((user) => (
                       <TableRow key={user.id} className="hover:bg-gray-50/30">
+                        <TableCell className="pl-6"><input type="checkbox" aria-label={`Select user ${user.email}`} checked={bulk.isSelected(user.id)} onChange={() => bulk.toggleSelection(user.id)} /></TableCell>
                         <TableCell className="pl-6">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 font-medium border border-gray-200">
-                              {user.email.charAt(0).toUpperCase()}
-                            </div>
+                            <Avatar name={user.email} />
                             <div>
-                              <div className="font-medium text-gray-900">{user.email}</div>
+                              <div className="font-medium text-gray-900" dangerouslySetInnerHTML={{ __html: highlightText(user.email, searchTerm) }} />
                               <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
                                 <Key size={10} /> ID: {user.id.substring(0, 8)}...
                               </div>
@@ -272,10 +348,46 @@ export default function Users() {
                   )}
                 </TableBody>
               </Table>
+              <InfiniteScrollFooter sentinelRef={sentinelRef} isFetchingNextPage={isFetchingNextPage} hasNextPage={Boolean(hasNextPage)} hasItems={normalizedUsers.length > 0} loadingLabel="Loading more users…" endLabel="No more users" />
             </div>
           )}
         </CardContent>
       </Card>
+
+      <BulkActionBar count={bulk.selectedCount} onSecondary={() => setRoleDialogOpen(true)} secondaryLabel="Change role" onExport={() => setExportOpen(true)} onDelete={() => void deleteSelected()} />
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} rows={exportRows} filename="olive-garden-users.csv" />
+      <ProgressModal open={bulkDelete.progress?.open ?? false} progress={bulkDelete.progress?.progress ?? 0} label={bulkDelete.progress?.label ?? ''} onCancel={bulkDelete.cancel} />
+
+      {/* Change Role Dialog */}
+      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">Change Role</DialogTitle>
+            <DialogDescription className="font-light">
+              Update the access level for {bulk.selectedCount} selected account{bulk.selectedCount === 1 ? '' : 's'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-5 py-4">
+            <div className="space-y-2.5">
+              <Label htmlFor="bulk-role" className="text-gray-700">Access Level</Label>
+              <Select value={bulkRole} onValueChange={(value) => setBulkRole(value as 'user' | 'moderator' | 'admin')}>
+                <SelectTrigger id="bulk-role" className="h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Standard Client</SelectItem>
+                  <SelectItem value="moderator">Event Manager</SelectItem>
+                  <SelectItem value="admin">Administrator</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setRoleDialogOpen(false)} className="w-full sm:w-auto h-11">Cancel</Button>
+            <Button type="button" onClick={() => void changeSelectedRole()} className="w-full sm:w-auto h-11 bg-[#8b9172] hover:bg-[#6a7051] text-white">Apply Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create User Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
@@ -328,8 +440,8 @@ export default function Users() {
                 <Label htmlFor="create-role" className="text-gray-700">Access Level</Label>
                 <Select
                   value={formData.role}
-                  onValueChange={(value: any) =>
-                    setFormData({ ...formData, role: value })
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, role: value as User['role'] })
                   }
                   disabled={isSubmitting}
                 >
@@ -409,8 +521,8 @@ export default function Users() {
                 <Label htmlFor="edit-role" className="text-gray-700">Access Level</Label>
                 <Select
                   value={formData.role}
-                  onValueChange={(value: any) =>
-                    setFormData({ ...formData, role: value })
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, role: value as User['role'] })
                   }
                   disabled={isSubmitting}
                 >

@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useRef, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { Upload, Image as ImageIcon, Trash2, FolderPlus, MapPin, Grid, Loader2, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,10 +22,23 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import type { ApiResponse } from '@/types';
+import LazyImage from '@/components/LazyImage';
+import DragDropUpload from '@/components/DragDropUpload';
+import BulkActionBar from '@/components/BulkActionBar';
+import ExportDialog from '@/components/ExportDialog';
+import { useBulkSelection } from '@/hooks/useBulkSelection';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useBulkDelete } from '@/hooks/useBulkDelete';
+import { useOperationRunner } from '@/hooks/useOperationRunner';
+import { confirm } from '@/lib/confirm';
+import { createEntityListCache } from '@/lib/entityListCache';
+import ProgressModal from '@/components/ProgressModal';
+import PageIntro from '@/components/PageIntro';
 
 export interface GalleryImage {
   id: string;
   title: string;
+  alt_text?: string;
   description?: string;
   url: string;
   album: string;
@@ -40,22 +53,26 @@ export default function Gallery() {
   // Modal States
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   
   const defaultForm = {
     title: '',
+    alt_text: '',
     description: '',
     album: 'Main Arena',
   };
   const [formData, setFormData] = useState(defaultForm);
 
-  const { data: galleryData, isLoading: isLoadingGallery } = useQuery({
+  const { data: galleryData, isLoading: isLoadingGallery, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['gallery'],
-    queryFn: async () => {
-      const response = await api.get<ApiResponse<{ images: GalleryImage[]; total: number }>>('/gallery');
+    queryFn: async ({ pageParam }) => {
+      const response = await api.get<ApiResponse<{ images: GalleryImage[]; total: number; page: number; has_more: boolean }>>('/gallery', { params: { page: pageParam, limit: 25 } });
       return response.data.data;
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.page + 1 : undefined,
   });
 
   const { data: statsData, isLoading: isLoadingStats } = useQuery({
@@ -106,6 +123,27 @@ export default function Gallery() {
     }
   };
 
+  const handleDroppedFiles = (files: File[]) => {
+    const file = files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size exceeds 5MB limit');
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      alert('Only JPEG, PNG, and WebP images are allowed');
+      return;
+    }
+    setSelectedFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setPreviewUrl(reader.result as string);
+    reader.readAsDataURL(file);
+    if (!formData.title) {
+      const titleWithoutExt = file.name.split('.').slice(0, -1).join('.');
+      setFormData((prev) => ({ ...prev, title: titleWithoutExt }));
+    }
+  };
+
   const resetUploadState = () => {
     setSelectedFile(null);
     setPreviewUrl(null);
@@ -127,6 +165,7 @@ export default function Gallery() {
       const submitData = new FormData();
       submitData.append('image', selectedFile);
       submitData.append('title', formData.title);
+      submitData.append('alt_text', formData.alt_text);
       submitData.append('description', formData.description);
       submitData.append('album', formData.album);
 
@@ -135,9 +174,11 @@ export default function Gallery() {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        onUploadProgress: (event) => setUploadProgress(event.total ? Math.round((event.loaded / event.total) * 100) : 0),
       });
 
       setIsUploadOpen(false);
+      setUploadProgress(0);
       resetUploadState();
       queryClient.invalidateQueries({ queryKey: ['gallery'] });
       queryClient.invalidateQueries({ queryKey: ['gallery', 'stats'] });
@@ -151,7 +192,7 @@ export default function Gallery() {
     }
   };
 
-  const normalizedImages = Array.isArray(galleryData?.images) ? galleryData.images : [];
+  const normalizedImages = galleryData?.pages.flatMap((page) => page.images) || [];
   
   const albumStructure = [
     { value: 'Main Arena', label: 'Main Arena', parent: null },
@@ -177,6 +218,97 @@ export default function Gallery() {
   };
 
   const filteredImages = getFilteredImagesForAlbum(albumFilter);
+  const bulk = useBulkSelection(filteredImages);
+  const { sentinelRef } = useInfiniteScroll(() => { void fetchNextPage(); }, Boolean(hasNextPage), isFetchingNextPage);
+  const [exportOpen, setExportOpen] = useState(false);
+  const zipRunner = useOperationRunner();
+
+  const invalidateGallery = () => {
+    void queryClient.invalidateQueries({ queryKey: ['gallery'] });
+    void queryClient.invalidateQueries({ queryKey: ['gallery', 'stats'] });
+  };
+
+  interface GalleryListPage {
+    images: GalleryImage[];
+    total: number;
+    page?: number;
+    has_more?: boolean;
+  }
+
+  const galleryListCache = useMemo(
+    () =>
+      createEntityListCache<GalleryListPage, GalleryImage>({
+        queryClient,
+        queryKey: ['gallery'],
+        getItems: (page) => page.images,
+        setItems: (page, images) => ({ ...page, images }),
+      }),
+    [queryClient]
+  );
+
+  const bulkDelete = useBulkDelete({
+    noun: 'images',
+    list: galleryListCache,
+    deleteOne: (id) => api.delete(`/gallery/${id}`),
+    refetch: invalidateGallery,
+  });
+
+  const resolveImageUrl = (image: GalleryImage) => {
+    if (image.url.startsWith('http')) return image.url;
+    const base = api.defaults.baseURL?.replace(/\/api$/, '') ?? window.location.origin;
+    return `${base}${image.url}`;
+  };
+
+  const downloadSelectedAsZip = async () => {
+    const items = bulk.selectedItems;
+    if (!items.length) return;
+    try {
+      const { default: JSZip } = await import('jszip');
+      const zip = new JSZip();
+      const folder = zip.folder('gallery');
+      if (!folder) throw new Error('Could not create zip folder');
+
+      const collected = await zipRunner.run({
+        label: 'Preparing ZIP download…',
+        items,
+        task: async (image) => {
+          const response = await fetch(resolveImageUrl(image), { credentials: 'include' });
+          if (!response.ok) return;
+          const blob = await response.blob();
+          const extension = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+          const safeTitle = (image.title || `image-${image.id}`).replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || `image-${image.id}`;
+          folder.file(`${safeTitle}-${image.id}.${extension}`, blob);
+        },
+      });
+      if (collected.cancelled) return;
+
+      let content: Blob | null = null;
+      await zipRunner.run({
+        label: 'Compressing ZIP download…',
+        items: [zip],
+        task: async () => {
+          content = await zip.generateAsync({ type: 'blob' });
+        },
+      });
+      if (!content) return;
+
+      const url = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'olive-garden-gallery.zip';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Failed to build ZIP download');
+    }
+  };
+
+  const exportRows = filteredImages.map((image) => ({ title: image.title, album: image.album, url: image.url, size: image.file_size || 0 }));
+  const deleteSelected = async () => {
+    if (await bulkDelete.run(new Set(bulk.selectedIds))) {
+      bulk.clearSelection();
+    }
+  };
   const formatBytes = (bytes: number) => {
     if (!bytes) return '0 MB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
@@ -184,24 +316,21 @@ export default function Gallery() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-serif text-gray-900">Gallery Management</h1>
-          <p className="text-gray-600 mt-2 font-light">Manage venue photos, event showcases, and albums</p>
-        </div>
-        <div className="flex gap-3 w-full sm:w-auto">
-          <Button 
+      <PageIntro
+        eyebrow="Content library"
+        title="Gallery Management"
+        description="Manage venue photos, event showcases, and albums."
+        actions={<Button
             onClick={() => {
               resetUploadState();
               setIsUploadOpen(true);
             }} 
-            className="w-full sm:w-auto bg-[#8b9172] hover:bg-[#6a7051] text-white"
+            className="w-full bg-[#8b9172] text-white hover:bg-[#6a7051] sm:w-auto"
           >
-            <Upload className="w-4 h-4 mr-2" />
+            <Upload className="mr-2 h-4 w-4" />
             Upload Photos
-          </Button>
-        </div>
-      </div>
+          </Button>}
+      />
 
       <Card className="border-border/50 shadow-sm">
         <CardHeader className="border-b border-border/50 pb-4">
@@ -240,14 +369,13 @@ export default function Gallery() {
                 key={image.id}
                 className="group relative bg-white rounded-xl border border-border/50 overflow-hidden hover:shadow-md transition-all duration-300 hover:border-[#8b9172]/30"
               >
+                <input type="checkbox" aria-label={`Select image ${image.title}`} checked={bulk.isSelected(image.id)} onChange={() => bulk.toggleSelection(image.id)} className="absolute left-3 top-3 z-10 h-4 w-4" />
                 <div className="aspect-[4/3] overflow-hidden bg-muted/30">
-                  <img
-                    src={image.url.startsWith('http') ? image.url : `${api.defaults.baseURL?.replace('/api', '')}${image.url}`}
-                    alt={image.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://placehold.co/600x400?text=Image+Not+Found';
-                    }}
+                  <LazyImage
+                    src={image.url.startsWith('http') ? image.url : `${api.defaults.baseURL?.replace(/\/api$/, '')}${image.url}`}
+                    alt={image.alt_text || image.title || 'Gallery image'}
+                    sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
+                    className="h-full w-full group-hover:scale-105 transition-transform duration-500"
                   />
                 </div>
                 <div className="p-4 bg-white">
@@ -261,8 +389,14 @@ export default function Gallery() {
                     variant="destructive" 
                     size="sm" 
                     className="h-9 px-3"
-                    onClick={() => {
-                      if (confirm('Delete this image permanently?')) {
+                    onClick={async () => {
+                      const approved = await confirm({
+                        title: 'Delete this image permanently?',
+                        undoable: false,
+                        confirmLabel: 'Delete',
+                        variant: 'destructive',
+                      });
+                      if (approved) {
                         deleteImageMutation.mutate(image.id);
                       }
                     }}
@@ -283,10 +417,18 @@ export default function Gallery() {
               <p className="text-gray-500 font-light">Try selecting a different album or upload new photos.</p>
             </div>
           )}
+          <div ref={sentinelRef} className="h-8" aria-hidden="true" />
+          {isFetchingNextPage && <p className="py-3 text-center text-sm text-gray-500" role="status">Loading more images…</p>}
+          {!hasNextPage && normalizedImages.length > 0 && <p className="py-3 text-center text-sm text-gray-400">No more images</p>}
           </>
           )}
         </CardContent>
       </Card>
+
+      <BulkActionBar count={bulk.selectedCount} onDownload={() => void downloadSelectedAsZip()} downloadLabel="Download ZIP" onExport={() => setExportOpen(true)} onDelete={() => void deleteSelected()} />
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} rows={exportRows} filename="olive-garden-gallery.csv" />
+      <ProgressModal open={zipRunner.progress?.open ?? false} progress={zipRunner.progress?.progress ?? 0} label={zipRunner.progress?.label ?? ''} onCancel={zipRunner.cancel} />
+      <ProgressModal open={bulkDelete.progress?.open ?? false} progress={bulkDelete.progress?.progress ?? 0} label={bulkDelete.progress?.label ?? ''} onCancel={bulkDelete.cancel} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="border-border/50 shadow-sm">
@@ -386,6 +528,7 @@ export default function Gallery() {
               {/* File Upload Area */}
               <div className="space-y-2">
                 <Label>Image File</Label>
+                <DragDropUpload onFiles={handleDroppedFiles} multiple={false} />
                 <div 
                   className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
                     previewUrl ? 'border-[#8b9172]/50 bg-[#8b9172]/5' : 'border-gray-300 hover:border-[#8b9172] bg-gray-50 hover:bg-gray-50/80'
@@ -455,6 +598,10 @@ export default function Gallery() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="alt-text">Alternative text</Label>
+                <Input id="alt-text" maxLength={125} placeholder="Describe this image for screen readers" value={formData.alt_text} onChange={(e) => setFormData({ ...formData, alt_text: e.target.value })} disabled={isSubmitting} />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="album">Album</Label>
                 <Select
                   value={formData.album}
@@ -502,6 +649,7 @@ export default function Gallery() {
           </form>
         </DialogContent>
       </Dialog>
+      <ProgressModal open={isSubmitting && uploadProgress > 0} progress={uploadProgress} label="Uploading image" />
     </div>
   );
 }

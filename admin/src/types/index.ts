@@ -3,6 +3,8 @@ export interface User {
   email: string;
   role: 'user' | 'admin' | 'moderator';
   created_at: string;
+  mfa_enabled?: boolean;
+  must_change_password?: boolean;
 }
 
 export interface Inquiry {
@@ -17,14 +19,32 @@ export interface Inquiry {
   updated_at: string;
 }
 
+export type ReplyStatus = 'queued' | 'sent' | 'failed';
+
+export interface InquiryReply {
+  id: string;
+  inquiryId: string;
+  toEmail: string;
+  subject: string;
+  body: string;
+  status: ReplyStatus;
+  error: string | null;
+  attempts: number;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AuthResponse {
   success: boolean;
   message: string;
   data: {
     user: User;
-    token: string;
+    token?: string;
     must_change_password?: boolean;
     message?: string;
+    mfa_required?: boolean;
+    mfa_token?: string;
   };
 }
 

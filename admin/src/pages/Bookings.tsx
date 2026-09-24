@@ -1,10 +1,12 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import Avatar from '@/components/Avatar';
 import { useToast } from '@/hooks/use-toast';
+import { confirm } from '@/lib/confirm';
 import bookingService from '@/services/booking.service';
-import type { Booking, CreateBookingDTO, BookingStats } from '@/types/booking';
+import type { Booking, BookingStatus, CreateBookingDTO, EventType, Venue } from '@/types/booking';
 import {
   Table,
   TableBody,
@@ -40,6 +42,19 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
+import BulkActionBar from '@/components/BulkActionBar';
+import EmptyState from '@/components/EmptyState';
+import BookingsReportDialog from '@/components/BookingsReportDialog';
+import { TableSkeleton } from '@/components/ui/skeleton';
+import { useBulkSelection } from '@/hooks/useBulkSelection';
+import { highlightText } from '@/lib/highlighter';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useBulkDelete } from '@/hooks/useBulkDelete';
+import { createEntityListCache } from '@/lib/entityListCache';
+import { scheduleUndoableOperation } from '@/lib/undoableOperations';
+import InfiniteScrollFooter from '@/components/InfiniteScrollFooter';
+import ProgressModal from '@/components/ProgressModal';
+import PageIntro from '@/components/PageIntro';
 
 export default function Bookings() {
   const { toast } = useToast();
@@ -47,6 +62,7 @@ export default function Bookings() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [venueFilter, setVenueFilter] = useState('all');
+  const [reportOpen, setReportOpen] = useState(false);
 
   // Modal States
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -105,8 +121,8 @@ export default function Bookings() {
         client_email: formData.client_email,
         client_phone: formData.client_phone || undefined,
         event_name: formData.event_name,
-        event_type: formData.event_type as any,
-        venue: formData.venue as any,
+        event_type: formData.event_type as EventType,
+        venue: formData.venue as Venue,
         event_date: formData.event_date,
         guest_count: Number(formData.guest_count),
         total_amount: Number(formData.total_amount),
@@ -134,10 +150,11 @@ export default function Bookings() {
       setIsDialogOpen(false);
       setEditingId(null);
       setFormData(defaultForm);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : undefined;
       toast({
         title: 'Error',
-        description: error.response?.data?.message || `Failed to ${editingId ? 'update' : 'create'} booking`,
+        description: message || `Failed to ${editingId ? 'update' : 'create'} booking`,
         variant: 'destructive',
       });
     } finally {
@@ -145,9 +162,11 @@ export default function Bookings() {
     }
   };
 
-  const { data: bookingsData, isLoading: isLoadingBookings } = useQuery({
+  const { data: bookingsData, isLoading: isLoadingBookings, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['bookings'],
-    queryFn: () => bookingService.getBookings(),
+    queryFn: ({ pageParam }) => bookingService.getBookings({ page: pageParam, limit: 25 }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.has_more ? (lastPage.page || 1) + 1 : undefined,
   });
 
   const { data: statsData, isLoading: isLoadingStats } = useQuery({
@@ -156,7 +175,7 @@ export default function Bookings() {
   });
 
   const updateBookingMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+    mutationFn: async ({ id, status }: { id: string; status: BookingStatus }) => {
       return bookingService.updateStatus(id, status);
     },
     onSuccess: () => {
@@ -168,36 +187,57 @@ export default function Bookings() {
         variant: 'success',
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : undefined;
       toast({
         title: 'Error',
-        description: error.response?.data?.message || 'Failed to update booking status',
+        description: message || 'Failed to update booking status',
         variant: 'destructive',
       });
     }
   });
 
-  const deleteBookingMutation = useMutation({
-    mutationFn: (id: string) => bookingService.deleteBooking(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      queryClient.invalidateQueries({ queryKey: ['bookings', 'stats'] });
-      toast({
-        title: 'Booking Deleted',
-        description: 'The booking has been deleted successfully.',
-        variant: 'success',
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: 'Error',
-        description: error.response?.data?.message || 'Failed to delete booking',
-        variant: 'destructive',
-      });
-    }
-  });
+  const normalizedBookings = bookingsData?.pages.flatMap((page) => page.bookings) || [];
 
-  const normalizedBookings = Array.isArray(bookingsData?.bookings) ? bookingsData.bookings : [];
+  const invalidateBookings = () => {
+    void queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    void queryClient.invalidateQueries({ queryKey: ['bookings', 'stats'] });
+  };
+
+  interface BookingListPage {
+    bookings: Booking[];
+    total: number;
+    page?: number;
+    has_more?: boolean;
+  }
+
+  const bookingListCache = useMemo(
+    () =>
+      createEntityListCache<BookingListPage, Booking>({
+        queryClient,
+        queryKey: ['bookings'],
+        getItems: (page) => page.bookings,
+        setItems: (page, bookings) => ({ ...page, bookings }),
+      }),
+    [queryClient]
+  );
+
+  const requestBookingDelete = (booking: Booking) => {
+    bookingListCache.remove(new Set([booking.id]));
+    scheduleUndoableOperation({
+      label: 'Booking deleted',
+      cancel: invalidateBookings,
+      commit: async () => {
+        try {
+          await bookingService.deleteBooking(booking.id);
+        } finally {
+          // Always reconcile the cache: on failure the optimistic removal must
+          // be rolled back by the refetch, not left as a ghost row.
+          invalidateBookings();
+        }
+      },
+    });
+  };
 
   const filteredBookings = normalizedBookings.filter((booking) => {
     const matchesSearch =
@@ -211,6 +251,20 @@ export default function Bookings() {
     
     return matchesSearch && matchesStatus && matchesVenue;
   });
+  const bulk = useBulkSelection(filteredBookings);
+  const { sentinelRef } = useInfiniteScroll(() => { void fetchNextPage(); }, Boolean(hasNextPage), isFetchingNextPage);
+  const bulkDelete = useBulkDelete({
+    noun: 'bookings',
+    deleteOne: (id) => bookingService.deleteBooking(id),
+    list: bookingListCache,
+    refetch: invalidateBookings,
+  });
+
+  const deleteSelected = async () => {
+    if (await bulkDelete.run(new Set(bulk.selectedIds))) {
+      bulk.clearSelection();
+    }
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -222,7 +276,7 @@ export default function Bookings() {
         );
       case 'confirmed':
         return (
-          <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-[#8b9172]/20 text-[#6a7051] border border-[#8b9172]/30">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-brand-100 text-brand-700 border border-brand-200 dark:bg-brand-900/40 dark:text-brand-300 dark:border-brand-700/50">
             <Check size={12} /> Confirmed
           </span>
         );
@@ -272,32 +326,32 @@ export default function Bookings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-serif text-gray-900">Reservations</h1>
-          <p className="text-gray-600 mt-2 font-light">Manage venue bookings and client requests</p>
-        </div>
-        <Button onClick={handleCreateClick} className="bg-[#8b9172] hover:bg-[#6a7051] text-white">
-          <Plus className="w-4 h-4 mr-2" />
-          New Reservation
-        </Button>
-      </div>
+      <PageIntro
+        eyebrow="Operations"
+        title="Reservations"
+        description="Manage venue bookings, client requests, and upcoming events."
+        actions={<>
+          <Button variant="outline" onClick={() => setReportOpen(true)}>Report</Button>
+          <Button onClick={handleCreateClick} className="bg-gradient-to-r from-brand-600 to-brand-500 text-white shadow-brand transition hover:shadow-brand-lg hover:brightness-105"><Plus className="mr-2 h-4 w-4" />New Reservation</Button>
+        </>}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, index) => (
-          <Card key={index} className="border-border/50 shadow-sm">
-            <CardContent className="pt-6">
+          <Card key={index} className="glass card-hover relative overflow-hidden">
+            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-400 via-brand-500 to-gold-400" aria-hidden="true" />
+            <CardContent className="pt-7">
               <div className={`text-3xl font-bold font-serif mb-1 ${stat.color}`}>{
                 isLoadingStats ? <Loader2 className="w-6 h-6 animate-spin text-gray-400" /> : stat.value
               }</div>
-              <div className="text-sm text-gray-500 font-medium uppercase tracking-wider">{stat.label}</div>
+              <div className="text-sm text-gray-500 font-medium uppercase tracking-wider dark:text-gray-400">{stat.label}</div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="border-border/50 shadow-sm">
-        <CardHeader className="border-b border-border/50 pb-4">
+      <Card className="glass overflow-hidden">
+        <CardHeader className="border-b border-gray-200/60 pb-4 dark:border-white/10">
           <CardTitle className="font-serif text-xl">All Reservations</CardTitle>
           <div className="flex flex-col md:flex-row items-center gap-4 mt-4">
             <div className="relative flex-1 w-full">
@@ -340,15 +394,14 @@ export default function Bookings() {
         </CardHeader>
         <CardContent className="p-0">
           {isLoadingBookings ? (
-            <div className="text-center py-16">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#8b9172] mb-4" />
-              <p className="text-gray-500 font-light">Loading reservations...</p>
-            </div>
+            <TableSkeleton rows={6} columns={7} />
           ) : (
           <div className="overflow-x-auto">
+            <div className="sr-only" aria-live="polite">{filteredBookings.length} reservations found</div>
             <Table>
               <TableHeader className="bg-gray-50/50">
                 <TableRow>
+                  <TableHead className="w-10 pl-6"><input type="checkbox" aria-label="Select all reservations" checked={bulk.allSelected} onChange={bulk.toggleAll} /></TableHead>
                   <TableHead className="w-[100px] pl-6">ID</TableHead>
                   <TableHead>Event Details</TableHead>
                   <TableHead>Client</TableHead>
@@ -361,28 +414,32 @@ export default function Bookings() {
               <TableBody>
                 {filteredBookings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-10 text-gray-500">
-                      No reservations found matching your criteria.
-                    </TableCell>
+                  <TableCell colSpan={8} className="py-10"><EmptyState title="No reservations found" description={searchTerm || statusFilter !== 'all' || venueFilter !== 'all' ? 'Try clearing a filter or changing your search.' : 'Create your first reservation to get started.'} actionLabel={searchTerm || statusFilter !== 'all' || venueFilter !== 'all' ? 'Clear filters' : 'New reservation'} onAction={() => { if (searchTerm || statusFilter !== 'all' || venueFilter !== 'all') { setSearchTerm(''); setStatusFilter('all'); setVenueFilter('all'); } else handleCreateClick(); }} /></TableCell>
                   </TableRow>
                 ) : (
                   filteredBookings.map((booking) => (
                     <TableRow key={booking.id} className="hover:bg-gray-50/30 cursor-default">
+                      <TableCell className="pl-6"><input type="checkbox" aria-label={`Select reservation ${booking.booking_reference}`} checked={bulk.isSelected(booking.id)} onChange={() => bulk.toggleSelection(booking.id)} /></TableCell>
                       <TableCell className="font-medium text-xs text-gray-500 pl-6">
-                        {booking.booking_reference}
+                        <span dangerouslySetInnerHTML={{ __html: highlightText(booking.booking_reference, searchTerm) }} />
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-gray-900">{booking.event_name}</div>
+                        <div className="font-medium text-gray-900" dangerouslySetInnerHTML={{ __html: highlightText(booking.event_name, searchTerm) }} />
                         <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                           <span className="inline-block w-2 h-2 rounded-full bg-gray-300" />
                           {booking.event_type} • {booking.guest_count || 0} guests
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-gray-900">{booking.client_name}</div>
-                        <div className="text-xs text-gray-500 mt-1 flex flex-col gap-0.5">
-                          <span className="flex items-center gap-1"><Mail size={10} /> {booking.client_email}</span>
-                          {booking.client_phone && <span className="flex items-center gap-1"><Phone size={10} /> {booking.client_phone}</span>}
+                        <div className="flex items-center gap-3">
+                          <Avatar name={booking.client_name || booking.client_email} size="sm" />
+                          <div>
+                            <div className="font-medium text-gray-900" dangerouslySetInnerHTML={{ __html: highlightText(booking.client_name, searchTerm) }} />
+                            <div className="text-xs text-gray-500 mt-1 flex flex-col gap-0.5">
+                              <span className="flex items-center gap-1"><Mail size={10} /> <span dangerouslySetInnerHTML={{ __html: highlightText(booking.client_email, searchTerm) }} /></span>
+                              {booking.client_phone && <span className="flex items-center gap-1"><Phone size={10} /> {booking.client_phone}</span>}
+                            </div>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
@@ -414,9 +471,16 @@ export default function Bookings() {
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuItem onClick={() => handleEditClick(booking)}>Edit reservation</DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => {
-                                if (confirm('Are you sure you want to delete this booking?')) {
-                                  deleteBookingMutation.mutate(booking.id);
+                              onClick={async () => {
+                                const approved = await confirm({
+                                  title: 'Delete this reservation?',
+                                  description: `${booking.client_name}'s booking will be removed after a short undo window.`,
+                                  undoable: true,
+                                  confirmLabel: 'Delete',
+                                  variant: 'destructive',
+                                });
+                                if (approved) {
+                                  requestBookingDelete(booking);
                                 }
                               }}
                               className="text-red-600 focus:text-red-600"
@@ -426,7 +490,7 @@ export default function Bookings() {
                             <DropdownMenuSeparator />
                             {booking.status === 'pending' && (
                               <DropdownMenuItem 
-                                className="text-[#8b9172]"
+                                className="text-brand-600 dark:text-brand-300"
                                 onClick={() => updateBookingMutation.mutate({ id: booking.id, status: 'confirmed' })}
                               >
                                 Confirm booking
@@ -456,10 +520,15 @@ export default function Bookings() {
                 )}
               </TableBody>
             </Table>
+            <InfiniteScrollFooter sentinelRef={sentinelRef} isFetchingNextPage={isFetchingNextPage} hasNextPage={Boolean(hasNextPage)} hasItems={normalizedBookings.length > 0} loadingLabel="Loading more reservations…" endLabel="No more reservations" />
           </div>
           )}
         </CardContent>
       </Card>
+
+      <BulkActionBar count={bulk.selectedCount} onDelete={() => void deleteSelected()} onExport={() => setReportOpen(true)} />
+      <BookingsReportDialog open={reportOpen} onOpenChange={setReportOpen} />
+      <ProgressModal open={bulkDelete.progress?.open ?? false} progress={bulkDelete.progress?.progress ?? 0} label={bulkDelete.progress?.label ?? ''} onCancel={bulkDelete.cancel} />
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => {
         if (!isSubmitting) setIsDialogOpen(open);

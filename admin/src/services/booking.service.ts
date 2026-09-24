@@ -1,7 +1,9 @@
 import api from '@/lib/api';
 import type { ApiResponse } from '@/types';
 import type { 
-  Booking, 
+  Booking,
+  BookingStatus,
+  PaymentStatus,
   CreateBookingDTO, 
   UpdateBookingDTO, 
   BookingStats,
@@ -18,7 +20,7 @@ class BookingService {
   /**
    * Get all bookings with optional filters
    */
-  async getBookings(filters?: BookingFilters): Promise<{ bookings: Booking[]; total: number }> {
+  async getBookings(filters?: BookingFilters): Promise<{ bookings: Booking[]; total: number; page?: number; limit?: number; has_more?: boolean }> {
     const params = new URLSearchParams();
     
     if (filters?.status) params.append('status', filters.status);
@@ -28,6 +30,8 @@ class BookingService {
     if (filters?.start_date) params.append('start_date', filters.start_date);
     if (filters?.end_date) params.append('end_date', filters.end_date);
     if (filters?.search) params.append('search', filters.search);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.limit) params.append('limit', String(filters.limit));
 
     const response = await api.get<ApiResponse<{ bookings: Booking[]; total: number }>>(
       `${this.baseUrl}?${params.toString()}`
@@ -75,11 +79,16 @@ class BookingService {
   }
 
   /**
-   * Get booking statistics
+   * Get booking statistics, optionally scoped to an event-date range
    */
-  async getStats(): Promise<BookingStats> {
+  async getStats(filters?: Pick<BookingFilters, 'start_date' | 'end_date'>): Promise<BookingStats> {
+    const params = new URLSearchParams();
+    if (filters?.start_date) params.append('start_date', filters.start_date);
+    if (filters?.end_date) params.append('end_date', filters.end_date);
+    const queryString = params.toString();
+
     const response = await api.get<ApiResponse<BookingStats>>(
-      `${this.baseUrl}/stats/summary`
+      `${this.baseUrl}/stats/summary${queryString ? `?${queryString}` : ''}`
     );
     return response.data.data;
   }
@@ -87,15 +96,15 @@ class BookingService {
   /**
    * Update booking status
    */
-  async updateStatus(id: string, status: string): Promise<Booking> {
-    return this.updateBooking(id, { status: status as any });
+  async updateStatus(id: string, status: BookingStatus): Promise<Booking> {
+    return this.updateBooking(id, { status });
   }
 
   /**
    * Update payment status
    */
-  async updatePaymentStatus(id: string, paymentStatus: string): Promise<Booking> {
-    return this.updateBooking(id, { payment_status: paymentStatus as any });
+  async updatePaymentStatus(id: string, paymentStatus: PaymentStatus): Promise<Booking> {
+    return this.updateBooking(id, { payment_status: paymentStatus });
   }
 }
 

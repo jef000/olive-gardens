@@ -1,24 +1,53 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Settings as SettingsIcon, Shield, User } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import ChangePasswordForm from '@/components/auth/ChangePasswordForm';
+import MFASetup from '@/components/auth/MFASetup';
+import DarkModeToggle from '@/components/DarkModeToggle';
+import api from '@/lib/api';
+import PageIntro from '@/components/PageIntro';
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [activeTab, setActiveTab] = useState('security');
+  const [mfaEnabled, setMfaEnabled] = useState(Boolean(user?.mfa_enabled));
+  const [disableMfaOpen, setDisableMfaOpen] = useState(false);
+  const [disablePassword, setDisablePassword] = useState('');
+  const [disableError, setDisableError] = useState<string | null>(null);
+  const [disabling, setDisabling] = useState(false);
+
+  const disableMfa = async () => {
+    setDisabling(true);
+    setDisableError(null);
+    try {
+      await api.post('/auth/mfa/disable', { password: disablePassword });
+      // The server revokes every session on downgrade, so sign out locally too.
+      setMfaEnabled(false);
+      setDisableMfaOpen(false);
+      setDisablePassword('');
+      logout();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Could not disable MFA.';
+      setDisableError(message);
+    } finally {
+      setDisabling(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your account settings and security preferences
-          </p>
-        </div>
-      </div>
+      <PageIntro
+        eyebrow="Workspace preferences"
+        title="Settings"
+        description="Manage your account, security preferences, and appearance."
+        actions={<DarkModeToggle className="h-11 w-11 rounded-xl border border-gray-200 bg-white/70" />}
+      />
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full max-w-md grid-cols-2">
@@ -72,6 +101,38 @@ export default function Settings() {
             </div>
             
             <div className="space-y-6">
+              <Card className="border-border/50">
+                <CardHeader><CardTitle className="text-lg">Multi-factor authentication</CardTitle><CardDescription>Protect your administrator account with an authenticator app.</CardDescription></CardHeader>
+                <CardContent className="space-y-4"><MFASetup enabled={mfaEnabled} onComplete={() => setMfaEnabled(true)} />{mfaEnabled && <button type="button" className="text-sm text-red-600 underline" onClick={() => { setDisableError(null); setDisablePassword(''); setDisableMfaOpen(true); }}>Disable MFA</button>}</CardContent>
+              </Card>
+
+              <Dialog open={disableMfaOpen} onOpenChange={(open) => { if (!disabling) setDisableMfaOpen(open); }}>
+                <DialogContent className="sm:max-w-[420px]">
+                  <DialogHeader>
+                    <DialogTitle>Disable multi-factor authentication?</DialogTitle>
+                    <DialogDescription>
+                      This removes the second factor from your account and signs you out of every device. Confirm your password to continue.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-1.5 py-2">
+                    <Label htmlFor="disable-mfa-password">Password</Label>
+                    <Input
+                      id="disable-mfa-password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={disablePassword}
+                      onChange={(event) => setDisablePassword(event.target.value)}
+                    />
+                    {disableError && <p className="text-xs text-red-600" role="alert">{disableError}</p>}
+                  </div>
+                  <DialogFooter className="gap-2 sm:gap-0">
+                    <Button type="button" variant="outline" disabled={disabling} onClick={() => setDisableMfaOpen(false)}>Cancel</Button>
+                    <Button type="button" variant="destructive" disabled={disabling || !disablePassword} onClick={() => void disableMfa()}>
+                      {disabling ? 'Disabling…' : 'Disable MFA'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
               <Card className="border-border/50 bg-gray-50/50">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">

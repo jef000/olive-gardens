@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { Bell, Check, Trash2, Filter, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,15 @@ import api from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 import type { Notification, NotificationStats, NotificationType } from '@/types/notification';
 import type { ApiResponse } from '@/types';
+import BulkActionBar from '@/components/BulkActionBar';
+import EmptyState from '@/components/EmptyState';
+import { useBulkSelection } from '@/hooks/useBulkSelection';
+import { TableSkeleton } from '@/components/ui/skeleton';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { useBulkDelete } from '@/hooks/useBulkDelete';
+import { createEntityListCache } from '@/lib/entityListCache';
+import ProgressModal from '@/components/ProgressModal';
+import PageIntro from '@/components/PageIntro';
 
 const priorityConfig = {
   low: { label: 'Low', color: 'text-gray-600', bg: 'bg-gray-100', icon: Info },
@@ -41,17 +50,21 @@ export default function Notifications() {
   const [readFilter, setReadFilter] = useState<string>('unread');
 
   // Fetch notifications
-  const { data: notificationsData, isLoading } = useQuery({
+  const { data: notificationsData, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['notifications', 'all', typeFilter, priorityFilter, readFilter],
-    queryFn: async () => {
-      const params: any = {};
+    queryFn: async ({ pageParam }) => {
+      const params: Record<string, string | number | boolean | undefined> = {};
       if (typeFilter !== 'all') params.type = typeFilter;
       if (priorityFilter !== 'all') params.priority = priorityFilter;
       if (readFilter !== 'all') params.is_read = readFilter === 'read';
+      params.page = pageParam;
+      params.limit = 25;
       
       const response = await api.get<ApiResponse<{ notifications: Notification[]; total: number }>>('/notifications', { params });
-      return response.data.data;
+      return response.data.data as { notifications: Notification[]; total: number; page: number; has_more: boolean };
     },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.has_more ? lastPage.page + 1 : undefined,
   });
 
   // Fetch stats
@@ -93,23 +106,61 @@ export default function Notifications() {
     },
   });
 
-  const notifications = notificationsData?.notifications || [];
+  const notifications = notificationsData?.pages.flatMap((page) => page.notifications) || [];
+  const { sentinelRef } = useInfiniteScroll(() => { void fetchNextPage(); }, Boolean(hasNextPage), isFetchingNextPage);
   const stats = statsData || { total: 0, unread: 0, by_type: [], by_priority: [] };
+  const bulk = useBulkSelection(notifications);
+
+  interface NotificationListPage {
+    notifications: Notification[];
+    total: number;
+    page?: number;
+    has_more?: boolean;
+  }
+
+  const notificationListCache = useMemo(
+    () =>
+      createEntityListCache<NotificationListPage, Notification>({
+        queryClient,
+        queryKey: ['notifications', 'all', typeFilter, priorityFilter, readFilter],
+        getItems: (page) => page.notifications,
+        setItems: (page, notifications) => ({ ...page, notifications }),
+      }),
+    [queryClient, typeFilter, priorityFilter, readFilter]
+  );
+
+  const bulkDelete = useBulkDelete({
+    noun: 'notifications',
+    list: notificationListCache,
+    deleteOne: (id) => api.delete(`/notifications/${id}`),
+    refetch: () => { void queryClient.invalidateQueries({ queryKey: ['notifications'] }); },
+    undoable: false,
+  });
+
+  const bulkMarkRead = async () => {
+    await Promise.all([...bulk.selectedIds].map((id) => api.patch(`/notifications/${id}/read`)));
+    bulk.clearSelection();
+    await queryClient.invalidateQueries({ queryKey: ['notifications'] });
+  };
+  const handleBulkDelete = async () => {
+    if (await bulkDelete.run(new Set(bulk.selectedIds))) {
+      bulk.clearSelection();
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
-          <p className="text-gray-600 mt-1">Manage and view all system notifications</p>
-        </div>
-        {stats.unread > 0 && (
+      <PageIntro
+        eyebrow="System activity"
+        title="Notifications"
+        description="Manage and review alerts, updates, and operational activity."
+        actions={stats.unread > 0 ? (
           <Button onClick={() => markAllAsReadMutation.mutate()}>
             <Check className="h-4 w-4 mr-2" />
             Mark All as Read
           </Button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -220,14 +271,12 @@ export default function Notifications() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="py-12 text-center text-gray-500">Loading notifications...</div>
+            <TableSkeleton rows={5} columns={3} />
           ) : notifications.length === 0 ? (
-            <div className="py-12 text-center">
-              <Bell className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-500">No notifications found</p>
-            </div>
+            <EmptyState title="You're all caught up" description="No notifications match the current filters." actionLabel="Clear filters" onAction={() => { setTypeFilter('all'); setPriorityFilter('all'); setReadFilter('all'); }} />
           ) : (
             <div className="space-y-3">
+              <div className="flex items-center gap-2"><input type="checkbox" aria-label="Select all notifications" checked={bulk.allSelected} onChange={bulk.toggleAll} /><span className="text-sm text-gray-500">Select all</span></div>
               {notifications.map((notification: Notification) => {
                 const config = priorityConfig[notification.priority];
                 const Icon = config.icon;
@@ -242,6 +291,7 @@ export default function Notifications() {
                     }`}
                   >
                     <div className="flex items-start gap-4">
+                      <input type="checkbox" aria-label={`Select notification ${notification.title}`} checked={bulk.isSelected(notification.id)} onChange={() => bulk.toggleSelection(notification.id)} className="mt-3" />
                       <div className={`flex-shrink-0 w-10 h-10 rounded-xl ${config.bg} flex items-center justify-center`}>
                         <Icon className={`h-5 w-5 ${config.color}`} />
                       </div>
@@ -291,10 +341,15 @@ export default function Notifications() {
                   </div>
                 );
               })}
+              <div ref={sentinelRef} className="h-8" aria-hidden="true" />
+              {isFetchingNextPage && <p className="py-3 text-center text-sm text-gray-500" role="status">Loading more notifications…</p>}
+              {!hasNextPage && notifications.length > 0 && <p className="py-3 text-center text-sm text-gray-400">No more notifications</p>}
             </div>
           )}
         </CardContent>
       </Card>
+      <BulkActionBar count={bulk.selectedCount} onSecondary={() => void bulkMarkRead()} secondaryLabel="Mark as read" onDelete={() => void handleBulkDelete()} />
+      <ProgressModal open={bulkDelete.progress?.open ?? false} progress={bulkDelete.progress?.progress ?? 0} label={bulkDelete.progress?.label ?? ''} onCancel={bulkDelete.cancel} />
     </div>
   );
 }

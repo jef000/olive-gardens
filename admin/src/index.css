@@ -1,5 +1,4 @@
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 @tailwind base;
 @tailwind components;
@@ -13,7 +12,7 @@
     --card-foreground: oklch(0.145 0 0);
     --popover: oklch(1 0 0);
     --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
+    --primary: oklch(0.62 0.05 115);
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
@@ -25,7 +24,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --ring: oklch(0.62 0.05 115);
     --radius: 0.625rem;
     --chart-1: oklch(0.809 0.105 251.813);
     --chart-2: oklch(0.623 0.214 259.815);
@@ -49,7 +48,7 @@
     --card-foreground: oklch(0.985 0 0);
     --popover: oklch(0.205 0 0);
     --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
+    --primary: oklch(0.74 0.07 115);
     --primary-foreground: oklch(0.205 0 0);
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
@@ -87,7 +86,64 @@
   }
   html {
     @apply font-sans;
+    color-scheme: light;
   }
+  html.dark {
+    color-scheme: dark;
+  }
+}
+
+.skip-links {
+  position: fixed;
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  display: flex;
+  gap: 0.5rem;
+  transform: translateY(-200%);
+}
+
+.skip-links:focus-within { transform: translateY(0); }
+.skip-links a { background: #1f2937; color: white; padding: 0.5rem 0.75rem; border-radius: 0.375rem; }
+:focus-visible { outline: 2px solid #6a7051; outline-offset: 2px; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* The portal predates semantic color tokens in several screens. These scoped
+   overrides keep those shared surfaces readable when dark mode is enabled. */
+@layer utilities {
+  .dark .bg-white,
+  .dark [class~="bg-white/80"],
+  .dark [class~="bg-white/70"],
+  .dark [class~="bg-white/60"],
+  .dark [class~="bg-white/50"],
+  .dark [class~="bg-white/90"] { background-color: #18211d; }
+  .dark [class~="bg-gray-50"],
+  .dark [class~="bg-gray-50/50"],
+  .dark [class~="bg-gray-50/80"] { background-color: #202b26; }
+  .dark [class~="bg-gray-100"] { background-color: #2a3731; }
+  .dark [class~="bg-gray-200"] { background-color: #37463e; }
+
+  .dark [class~="text-gray-900"] { color: #f3f7f3; }
+  .dark [class~="text-gray-800"] { color: #e4ece7; }
+  .dark [class~="text-gray-700"] { color: #d4ded8; }
+  .dark [class~="text-gray-600"] { color: #b9c7be; }
+  .dark [class~="text-gray-500"] { color: #97a69d; }
+  .dark [class~="text-gray-400"] { color: #7f9085; }
+  .dark [class~="text-gray-300"] { color: #64766b; }
+
+  .dark [class~="border-gray-100"],
+  .dark [class~="border-gray-200"],
+  .dark [class~="border-gray-300"] { border-color: #34443b; }
+  .dark [class~="border-gray-50"] { border-color: #29372f; }
+
+  .dark [class~="hover:bg-gray-50"]:hover,
+  .dark [class~="hover:bg-gray-50/50"]:hover { background-color: #26342d; }
+  .dark [class~="hover:bg-gray-100"]:hover { background-color: #2f4036; }
+  .dark [class~="hover:text-gray-900"]:hover { color: #ffffff; }
+
+  .dark input,
+  .dark textarea { color-scheme: dark; }
 }
 
 @layer base {
@@ -96,5 +152,119 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Main app canvas — soft olive wash with warm radial glows */
+  .bg-app {
+    background-color: #f4f4ee;
+    background-image:
+      radial-gradient(55% 45% at 85% 0%, rgb(198 154 61 / 0.08) 0%, transparent 55%),
+      radial-gradient(50% 45% at 0% 15%, rgb(139 145 114 / 0.10) 0%, transparent 55%),
+      radial-gradient(70% 60% at 50% 110%, rgb(139 145 114 / 0.08) 0%, transparent 60%);
+  }
+  .dark .bg-app {
+    background-color: #141814;
+    background-image:
+      radial-gradient(55% 45% at 85% 0%, rgb(198 154 61 / 0.07) 0%, transparent 55%),
+      radial-gradient(50% 45% at 0% 15%, rgb(139 145 114 / 0.10) 0%, transparent 55%);
+  }
+
+  /* Glassmorphism surfaces */
+  .glass {
+    background: rgb(255 255 255 / 0.62);
+    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid rgb(255 255 255 / 0.6);
+  }
+  .dark .glass {
+    background: rgb(24 32 24 / 0.55);
+    border: 1px solid rgb(255 255 255 / 0.08);
+  }
+  .glass-strong {
+    background: rgb(255 255 255 / 0.78);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border: 1px solid rgb(255 255 255 / 0.7);
+  }
+  .dark .glass-strong {
+    background: rgb(26 34 26 / 0.7);
+    border: 1px solid rgb(255 255 255 / 0.1);
+  }
+
+  /* Gradient headline text */
+  .text-gradient {
+    background: linear-gradient(120deg, #575c43 0%, #8b9172 45%, #c69a3d 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .dark .text-gradient {
+    background: linear-gradient(120deg, #d8dec0 0%, #bcc59a 45%, #d3ad4a 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Interactive card lift */
+  .card-hover {
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 18px 45px -18px rgb(139 145 114 / 0.5);
+  }
+
+  .ring-brand {
+    --tw-ring-color: rgb(139 145 114 / 0.5);
+  }
+
+  /* Word-like writing surface for the inquiry reply editor */
+  .document-editor {
+    color: #1f2937;
+    font-size: 0.9375rem;
+    line-height: 1.75;
+    min-height: 14rem;
+  }
+  .document-editor:focus {
+    outline: none;
+  }
+  .document-editor p {
+    margin: 0 0 0.75rem;
+  }
+  .document-editor p:last-child {
+    margin-bottom: 0;
+  }
+  .document-editor ul {
+    list-style: disc;
+    margin: 0 0 0.75rem;
+    padding-left: 1.4rem;
+  }
+  .document-editor ol {
+    list-style: decimal;
+    margin: 0 0 0.75rem;
+    padding-left: 1.4rem;
+  }
+  .document-editor li {
+    margin-bottom: 0.25rem;
+  }
+  .document-editor a {
+    color: #6f7455;
+    text-decoration: underline;
+  }
+  .document-editor s,
+  .document-editor strike {
+    color: #6b7280;
+  }
+  .dark .document-editor {
+    color: #e4ece7;
+  }
+  .dark .document-editor a {
+    color: #bcc59a;
+  }
+  .dark .document-editor s,
+  .dark .document-editor strike {
+    color: #97a69d;
   }
 }
