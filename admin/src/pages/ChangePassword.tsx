@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Lock, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
+import { getApiErrorMessage } from '@/lib/apiError';
 
 interface ChangePasswordRequest {
   currentPassword: string;
@@ -40,8 +41,8 @@ export default function ChangePassword() {
         });
       }, 2000);
     },
-    onError: (error: any) => {
-      setError(error.response?.data?.message || 'Failed to change password');
+    onError: (error: unknown) => {
+      setError(getApiErrorMessage(error, 'We could not change your password. Please try again.'));
     },
   });
 
@@ -128,7 +129,7 @@ export default function ChangePassword() {
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-2">
+                <div role="alert" aria-live="polite" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-2">
                   <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                   <span className="text-sm">{error}</span>
                 </div>
@@ -144,11 +145,13 @@ export default function ChangePassword() {
                     type={showCurrentPassword ? 'text' : 'password'}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
+                    autoComplete="current-password"
                     className="pr-10"
                     required
                   />
                   <button
                     type="button"
+                    aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
@@ -167,11 +170,13 @@ export default function ChangePassword() {
                     type={showNewPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => handleNewPasswordChange(e.target.value)}
+                    autoComplete="new-password"
                     className="pr-10"
                     required
                   />
                   <button
                     type="button"
+                    aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
                     onClick={() => setShowNewPassword(!showNewPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
@@ -190,11 +195,13 @@ export default function ChangePassword() {
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
                     className="pr-10"
                     required
                   />
                   <button
                     type="button"
+                    aria-label={showConfirmPassword ? 'Hide password confirmation' : 'Show password confirmation'}
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >

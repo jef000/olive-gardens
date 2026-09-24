@@ -4,8 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Leaf, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import AuthShell from '@/components/AuthShell';
 import api from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/apiError';
+import { passwordSchema, validateSchema } from '@/lib/validation';
 
 export default function ResetPassword() {
   const [searchParams] = useSearchParams();
@@ -50,7 +53,15 @@ export default function ResetPassword() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isFormValid || !token) return;
+    if (!token) {
+      setError('This reset link is missing or invalid. Request a new link to continue.');
+      return;
+    }
+    const passwordError = validateSchema(passwordSchema, password);
+    if (passwordError || !validations.match) {
+      setError(passwordError || 'Passwords do not match.');
+      return;
+    }
     
     setError('');
     setIsLoading(true);
@@ -66,8 +77,8 @@ export default function ResetPassword() {
       setTimeout(() => {
         navigate('/login');
       }, 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.message || err.message || 'Failed to reset password');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'We could not reset your password. Request a new link and try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -85,20 +96,8 @@ export default function ResetPassword() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 relative overflow-hidden">
-      {/* Decorative background elements */}
-      <div className="absolute top-0 right-0 w-[60%] h-[100%] rounded-full bg-[#8b9172]/5 blur-3xl -z-10 translate-x-1/3" />
-      <div className="absolute bottom-0 left-0 w-[40%] h-[60%] rounded-full bg-[#a6ac8e]/5 blur-3xl -z-10 -translate-x-1/3" />
-
-      <div className="mb-8 flex flex-col items-center">
-        <div className="w-16 h-16 bg-[#8b9172] rounded-2xl flex items-center justify-center mb-4 shadow-lg">
-          <Leaf className="text-white w-8 h-8" />
-        </div>
-        <h1 className="text-4xl font-serif text-gray-900 tracking-tight">Olive Garden</h1>
-        <p className="text-gray-500 font-light tracking-widest uppercase text-sm mt-2">Management Portal</p>
-      </div>
-
-      <Card className="w-full max-w-md border-border/50 shadow-xl bg-white/80 backdrop-blur-sm">
+    <AuthShell>
+      <Card className="glass-strong relative w-full max-w-md rounded-3xl border-white/20 shadow-brand-lg">
         {isSuccess ? (
           <>
             <CardHeader className="space-y-4 pb-6 pt-8 items-center text-center">
@@ -138,7 +137,7 @@ export default function ResetPassword() {
                   </Link>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleSubmit} className="space-y-5" noValidate>
                   <div className="space-y-4">
                     <div className="space-y-2.5">
                       <Label htmlFor="password" className="text-gray-600">New Password</Label>
@@ -146,8 +145,10 @@ export default function ResetPassword() {
                         id="password"
                         type="password"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => { setPassword(e.target.value); setError(''); }}
                         required
+                        autoComplete="new-password"
+                        aria-invalid={Boolean(error)}
                         disabled={isLoading}
                         className="h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172]"
                         placeholder="••••••••"
@@ -160,8 +161,10 @@ export default function ResetPassword() {
                         id="confirmPassword"
                         type="password"
                         value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        onChange={(e) => { setConfirmPassword(e.target.value); setError(''); }}
                         required
+                        autoComplete="new-password"
+                        aria-invalid={Boolean(confirmPassword && !validations.match)}
                         disabled={isLoading}
                         className={`h-11 border-gray-200 focus:border-[#8b9172] focus:ring-[#8b9172] ${confirmPassword && !validations.match ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}`}
                         placeholder="••••••••"
@@ -182,7 +185,7 @@ export default function ResetPassword() {
                   </div>
                   
                   {error && (
-                    <div className="text-sm text-red-600 bg-red-50/50 border border-red-100 p-3 rounded-md flex items-start gap-2">
+                    <div role="alert" aria-live="polite" className="text-sm text-red-600 bg-red-50/50 border border-red-100 p-3 rounded-md flex items-start gap-2">
                       <div className="mt-0.5">•</div>
                       {error}
                     </div>
@@ -190,7 +193,7 @@ export default function ResetPassword() {
                   
                   <Button 
                     type="submit" 
-                    className="w-full h-11 bg-[#8b9172] hover:bg-[#6a7051] text-white transition-colors duration-300 mt-4" 
+                    className="w-full h-11 bg-gradient-to-r from-brand-600 via-brand-500 to-gold-500 text-white shadow-brand transition-all duration-300 hover:shadow-brand-lg hover:brightness-105 mt-4" 
                     disabled={isLoading || !isFormValid}
                   >
                     {isLoading ? 'Resetting Password...' : 'Reset Password'}
@@ -207,10 +210,6 @@ export default function ResetPassword() {
           </>
         )}
       </Card>
-      
-      <p className="mt-8 text-sm text-gray-400 font-light">
-        &copy; {new Date().getFullYear()} Olive Garden Resort. All rights reserved.
-      </p>
-    </div>
+    </AuthShell>
   );
 }
