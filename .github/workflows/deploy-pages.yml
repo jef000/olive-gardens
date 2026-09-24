@@ -25,9 +25,14 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      # Fails fast with a clear message until Pages is enabled in
+      # Settings → Pages → Source: GitHub Actions. The workflow token cannot
+      # create the Pages site itself.
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -48,10 +53,6 @@ jobs:
       # lets client-side routes like /about survive a hard refresh.
       - name: Add SPA fallback
         run: cp dist/index.html dist/404.html
-
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
