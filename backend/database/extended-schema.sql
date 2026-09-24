@@ -105,7 +105,7 @@ CREATE TABLE gallery_images (
   thumbnail_url TEXT,
   
   -- Organization
-  album VARCHAR(100) NOT NULL CHECK (album IN ('Main Arena', 'Garden Hall', 'Therapy Room', 'Events', 'Facilities', 'Other')),
+  album VARCHAR(100) NOT NULL CHECK (album IN ('Main Arena', 'Garden Hall', 'Gardens', 'Garden of Eden', 'Mount Sinai Prayer Area', 'Picnic Grounds', 'Camping Grounds', 'Therapy Room', 'Events', 'Facilities', 'Other')),
   category VARCHAR(100),
   tags TEXT[], -- Array of tags
   

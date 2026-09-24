@@ -52,11 +52,7 @@ CREATE TRIGGER update_users_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Insert a test admin user (password: Admin123!)
--- Password hash for 'Admin123!' with bcrypt rounds=12
-INSERT INTO users (email, password, role)
-VALUES (
-  'admin@olivegarden.com',
-  '$2b$12$.bdRWSOku9QIHh98efr3t.5NtxHEvU0MJz2g2XUiTbVjJHFF6vaQ2',
-  'admin'
-) ON CONFLICT (email) DO NOTHING;
+-- The first admin is NOT seeded here on purpose: a committed default password
+-- is an account-takeover vector. Create it with `npm run db:setup`, which reads
+-- ADMIN_EMAIL / ADMIN_PASSWORD from the environment (random password if unset)
+-- and marks it must_change_password so it is rotated on first login.
