@@ -1,7 +1,12 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import retreatImage from "@/assets/gallery-retreat.jpg";
-import { ChevronRight, Heart, Users, MapPin, Phone } from "lucide-react";
+import retreatImage from "@/assets/venue/venue-lawn.jpg";
+import foundersImage from "@/assets/venue/founders-gitonga.jpg";
+import drMonicaImage from "@/assets/venue/dr-monica.jpg";
+import octcBuildingImage from "@/assets/venue/octc-building.jpg";
+import octcLogo from "@/assets/venue/octc-logo.png";
+import { ChevronRight, ExternalLink, Heart, Users, MapPin, Phone } from "lucide-react";
+import { SITE_CONTACT } from "@/lib/siteInfo";
 
 const About = () => {
   const fadeIn = {
@@ -54,7 +59,7 @@ const About = () => {
         >
           <img
             src={retreatImage}
-            alt="Interior of the retreat center — warm wooden furnishings, garden views"
+            alt="Manicured lawns and indigenous trees at Olive Retreat Gardens"
             className="w-full h-[400px] md:h-[600px] object-cover hover:scale-105 transition-transform duration-[2s] ease-out"
           />
         </motion.div>
@@ -78,10 +83,10 @@ const About = () => {
               </div>
               <div className="space-y-6 text-lg text-muted-foreground leading-relaxed">
                 <p>
-                  We provide a tranquil, well-managed venue that serves as a sanctuary for life's most meaningful moments — from joyful celebrations to quiet, restorative sessions. 
+                  We provide a tranquil, well-managed venue that serves as a sanctuary for life's most meaningful moments — from joyful celebrations to quiet, restorative sessions.
                 </p>
                 <p>
-                  Rooted in faith, hospitality, and academic excellence, we strive to make every guest feel at home, ensuring their experience is seamless and memorable.
+                  Founded by <strong className="text-foreground">Rev. Prof. Gitonga</strong> and <strong className="text-foreground">Dr. Monica Gitonga</strong>, the gardens host weddings and receptions for up to 1,000 guests, school groups, family reunions, picnics and camping — all within an indigenous forest along the Meru–Maua Road.
                 </p>
               </div>
             </motion.div>
@@ -100,10 +105,10 @@ const About = () => {
               </div>
               <div className="space-y-6 text-lg text-muted-foreground leading-relaxed">
                 <p>
-                  Our counselling and training programs reflect our founders' deep commitment to holistic wellbeing, offering professional guidance in a setting that nurtures both mind and spirit.
+                  We are the home of the <strong className="text-foreground">Olive Counselling & Training Center (OCTC)</strong>, registered by the Kenya Counselling and Psychological Association (KCPA) since 2005.
                 </p>
                 <p>
-                  Whether you are seeking personal restoration or team building, our grounds provide the perfect canvas for growth and renewal.
+                  We work closely with a professional team of medical doctors, clinical psychologists, social workers and pastors — offering individual, couple, family and group therapy, psychometric assessments, and training for corporate clients, institutions, church groups, government agencies and NGOs, plus internships and supervision for counsellors in training.
                 </p>
               </div>
             </motion.div>
@@ -132,12 +137,21 @@ const About = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 0.8, delay: 0.1 }}
-              className="bg-white p-10 rounded-3xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-border"
+              className="bg-white rounded-3xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-border overflow-hidden"
             >
-              <h3 className="text-2xl font-serif font-medium mb-4 text-foreground">Rev. Prof. Gitonga</h3>
-              <p className="text-muted-foreground leading-relaxed text-lg">
-                A revered theologian and educator, Rev. Prof. Gitonga has dedicated decades to ministry and community development. His vision for Olive Retreat Gardens blends spiritual purpose with practical hospitality, creating a venue that serves both sacred and social gatherings.
-              </p>
+              <div className="aspect-[4/3] overflow-hidden">
+                <img
+                  src={foundersImage}
+                  alt="Rev. Prof. Gitonga and Dr. Monica Gitonga at Olive Retreat Gardens"
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
+                />
+              </div>
+              <div className="p-10">
+                <h3 className="text-2xl font-serif font-medium mb-4 text-foreground">Rev. Prof. Gitonga</h3>
+                <p className="text-muted-foreground leading-relaxed text-lg">
+                  A revered theologian and educator, Rev. Prof. Gitonga has dedicated decades to ministry and community development. His vision for Olive Retreat Gardens blends spiritual purpose with practical hospitality, creating a venue that serves both sacred and social gatherings.
+                </p>
+              </div>
             </motion.div>
             
             <motion.div 
@@ -145,14 +159,65 @@ const About = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: "-100px" }}
               transition={{ duration: 0.8, delay: 0.3 }}
-              className="bg-white p-10 rounded-3xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-border"
+              className="bg-white rounded-3xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-border overflow-hidden"
             >
-              <h3 className="text-2xl font-serif font-medium mb-4 text-foreground">Dr. Monica Gitonga</h3>
-              <p className="text-muted-foreground leading-relaxed text-lg">
-                An accomplished academic and counselling professional, Dr. Monica brings warmth, structure, and therapeutic expertise to the retreat's programs. Her work ensures that every counselling and training session at Olive Retreat is conducted with the highest professional and ethical standards.
-              </p>
+              <div className="aspect-[4/3] overflow-hidden">
+                <img
+                  src={drMonicaImage}
+                  alt="Dr. Monica Gitonga, senior psychologist at the Olive Counselling and Training Center"
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
+                />
+              </div>
+              <div className="p-10">
+                <h3 className="text-2xl font-serif font-medium mb-4 text-foreground">Dr. Monica Gitonga</h3>
+                <p className="text-muted-foreground leading-relaxed text-lg">
+                  An accomplished academic and counselling professional, Dr. Monica brings warmth, structure, and therapeutic expertise to the retreat's programs. Her work ensures that every counselling and training session at Olive Retreat is conducted with the highest professional and ethical standards.
+                </p>
+              </div>
             </motion.div>
           </div>
+        </div>
+      </section>
+
+      {/* Olive Counselling & Training Center */}
+      <section className="px-8 lg:px-16 py-24 lg:py-32 bg-white">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+          <motion.div
+            initial={{ opacity: 0, x: -30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8 }}
+            className="order-2 lg:order-1"
+          >
+            <img
+              src={octcBuildingImage}
+              alt="The Olive Counselling and Training Center building, with its sign over the entrance"
+              className="rounded-3xl shadow-xl w-full object-cover"
+            />
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, x: 30 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.8, delay: 0.15 }}
+            className="order-1 lg:order-2"
+          >
+            <img src={octcLogo} alt="Olive Counselling & Training Center logo" className="h-16 w-auto mb-6" />
+            <span className="text-primary font-medium tracking-widest uppercase text-sm mb-3 block">Counselling & Training</span>
+            <h2 className="text-3xl md:text-4xl font-serif font-light mb-6">A Registered Counselling & Training Center</h2>
+            <div className="space-y-5 text-lg text-muted-foreground leading-relaxed">
+              <p>
+                OCTC opened its doors in <strong className="text-foreground">2005</strong>, fully registered as a Counselling and Training Center by the <strong className="text-foreground">Kenya Counselling and Psychological Association (KCPA)</strong>.
+              </p>
+              <p>
+                The center works with individuals, groups, churches and institutions — offering one-on-one, couple and family therapy, psychological and psychometric assessments, drug and alcohol testing and counselling, HIV/AIDS testing and counselling, and mediation for court-annexed cases in commercial and family issues.
+              </p>
+              <p>
+                It is housed within Olive Retreat Gardens, with professionally set individual, group and child therapy rooms surrounded by well-manicured grounds.
+              </p>
+            </div>
+          </motion.div>
         </div>
       </section>
 
@@ -189,8 +254,13 @@ const About = () => {
                 <div>
                   <h4 className="font-medium uppercase tracking-widest text-sm text-white/60 mb-2">Location</h4>
                   <p className="text-lg">
-                    Along the Meru–Nanyuki Highway<br />
-                    Meru County, Kenya
+                    {SITE_CONTACT.addressLines.map((line) => (
+                      <span key={line}>
+                        {line}
+                        <br />
+                      </span>
+                    ))}
+                    {SITE_CONTACT.postal}
                   </p>
                 </div>
               </div>
@@ -200,12 +270,35 @@ const About = () => {
                 <div>
                   <h4 className="font-medium uppercase tracking-widest text-sm text-white/60 mb-2">Contact</h4>
                   <p className="text-lg">
-                    +254 700 000 000<br />
-                    info@oliveretreat.co.ke
+                    {SITE_CONTACT.phoneDisplay}<br />
+                    {SITE_CONTACT.email}
                   </p>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Map with the facility pin */}
+          <div className="relative z-10 mt-12 overflow-hidden rounded-2xl border border-white/15 bg-white/5">
+            <iframe
+              title="Google map showing the location of Olive Retreat Gardens, Meru"
+              src={SITE_CONTACT.mapsEmbedUrl}
+              className="h-72 w-full border-0 md:h-80"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              allowFullScreen
+            />
+          </div>
+          <div className="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-white/70">{SITE_CONTACT.addressLines[0]}</p>
+            <a
+              href={SITE_CONTACT.mapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-medium text-white underline underline-offset-4 transition-colors hover:text-white/80"
+            >
+              Open in Google Maps <ExternalLink className="w-4 h-4" />
+            </a>
           </div>
         </motion.div>
       </section>

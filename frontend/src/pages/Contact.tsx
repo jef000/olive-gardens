@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { MapPin, Phone, Mail, Clock, Send } from "lucide-react";
+import { MapPin, Phone, Mail, Clock, Send, ExternalLink } from "lucide-react";
 import api from "@/lib/api";
+import { SITE_CONTACT } from "@/lib/siteInfo";
 
 const Contact = () => {
   const [submitted, setSubmitted] = useState(false);
@@ -109,16 +110,18 @@ const Contact = () => {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <h2 className="text-3xl font-serif mb-8">Send an Inquiry</h2>
                 {error && (
-                  <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-200">
+                  <div role="alert" className="p-4 bg-red-50 text-red-600 rounded-xl text-sm border border-red-200">
                     {error}
                   </div>
                 )}
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">First Name</label>
+                    <label htmlFor="contact-first-name" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">First Name</label>
                     <input
+                      id="contact-first-name"
                       type="text"
                       required
+                      autoComplete="given-name"
                       value={formData.firstName}
                       onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                       className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
@@ -126,10 +129,12 @@ const Contact = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Last Name</label>
+                    <label htmlFor="contact-last-name" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Last Name</label>
                     <input
+                      id="contact-last-name"
                       type="text"
                       required
+                      autoComplete="family-name"
                       value={formData.lastName}
                       onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                       className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
@@ -138,10 +143,12 @@ const Contact = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Email Address</label>
+                  <label htmlFor="contact-email" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Email Address</label>
                   <input
+                    id="contact-email"
                     type="email"
                     required
+                    autoComplete="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
@@ -149,18 +156,21 @@ const Contact = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Phone Number (Optional)</label>
+                  <label htmlFor="contact-phone" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Phone Number (Optional)</label>
                   <input
+                    id="contact-phone"
                     type="tel"
+                    autoComplete="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
-                    placeholder="+254 700 000 000"
+                    placeholder={SITE_CONTACT.phoneDisplay}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Your Message</label>
+                  <label htmlFor="contact-message" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Your Message</label>
                   <textarea
+                    id="contact-message"
                     required
                     rows={6}
                     value={formData.message}
@@ -204,9 +214,37 @@ const Contact = () => {
                   <h3 className="text-sm font-medium uppercase tracking-widest text-muted-foreground mb-2">Location</h3>
                   <p className="text-lg text-foreground leading-relaxed">
                     Olive Retreat Gardens<br />
-                    Along the Meru–Nanyuki Highway<br />
-                    Meru County, Kenya
+                    {SITE_CONTACT.addressLines.map((line) => (
+                      <span key={line}>
+                        {line}
+                        <br />
+                      </span>
+                    ))}
+                    {SITE_CONTACT.postal}
                   </p>
+                </div>
+              </div>
+
+              {/* Map with the facility pin */}
+              <div className="overflow-hidden rounded-2xl border border-border/60 shadow-sm">
+                <iframe
+                  title="Google map showing the location of Olive Retreat Gardens, Meru"
+                  src={SITE_CONTACT.mapsEmbedUrl}
+                  className="h-64 w-full border-0"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  allowFullScreen
+                />
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/30 px-4 py-3">
+                  <span className="text-xs text-muted-foreground">{SITE_CONTACT.addressLines[0]}</span>
+                  <a
+                    href={SITE_CONTACT.mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline-offset-4 hover:underline"
+                  >
+                    Open in Google Maps <ExternalLink size={13} />
+                  </a>
                 </div>
               </div>
               
@@ -216,9 +254,10 @@ const Contact = () => {
                 </div>
                 <div>
                   <h3 className="text-sm font-medium uppercase tracking-widest text-muted-foreground mb-2">Phone & WhatsApp</h3>
-                  <p className="text-lg text-foreground">+254 700 000 000</p>
+                  <p className="text-lg text-foreground">{SITE_CONTACT.phoneDisplay}</p>
+                  <p className="text-base text-muted-foreground">{SITE_CONTACT.phoneAltDisplay}</p>
                   <a
-                    href="https://wa.me/254700000000?text=Hello%21%20I%27m%20planning%20to%20have%20an%20event%20at%20Olive%20Retreat%20Gardens%20and%20would%20love%20to%20discuss%20availability%20and%20services.%20Could%20you%20please%20share%20more%20details%3F"
+                    href={SITE_CONTACT.whatsappUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-block mt-3 text-primary hover:text-primary/80 font-medium transition-colors"
@@ -234,7 +273,7 @@ const Contact = () => {
                 </div>
                 <div>
                   <h3 className="text-sm font-medium uppercase tracking-widest text-muted-foreground mb-2">Email</h3>
-                  <p className="text-lg text-foreground">info@oliveretreat.co.ke</p>
+                  <p className="text-lg text-foreground">{SITE_CONTACT.email}</p>
                 </div>
               </div>
               

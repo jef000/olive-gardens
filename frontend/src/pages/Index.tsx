@@ -1,12 +1,21 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { motion, useScroll, useTransform, type Variants } from "framer-motion";
-import heroImage from "@/assets/hero-garden.jpg";
-import weddingImage from "@/assets/gallery-wedding.jpg";
-import retreatImage from "@/assets/gallery-retreat.jpg";
-import diningImage from "@/assets/gallery-dining.jpg";
+import heroImage from "@/assets/venue/hero-garden.jpg";
+import weddingImage from "@/assets/venue/venue-garden-of-eden.jpg";
+import retreatImage from "@/assets/venue/octc-building.jpg";
+import diningImage from "@/assets/venue/venue-lounge.jpg";
+import pathImage from "@/assets/venue/venue-garden-path.jpg";
+import arenaImage from "@/assets/venue/venue-main-arena.jpg";
+import fountainImage from "@/assets/venue/venue-fountain.jpg";
+import birdsImage from "@/assets/venue/venue-birds.jpg";
+import apiaryImage from "@/assets/venue/venue-apiary.jpg";
+import gazeboImage from "@/assets/venue/venue-gazebo.jpg";
+import riverImage from "@/assets/venue/venue-river.jpg";
+import prayerSignImage from "@/assets/venue/venue-prayer-sign.jpg";
+import { SITE_CONTACT } from "@/lib/siteInfo";
 import {
-  ArrowDown, Star, ChevronRight, HeartHandshake, Leaf, Users, Calendar,
+  ArrowDown, ChevronRight, HeartHandshake, Leaf, Users, Calendar,
   MapPin, Award, CheckCircle2, Facebook, Instagram, Twitter, Phone, Mail,
   ClipboardList, Smile
 } from "lucide-react";
@@ -15,37 +24,46 @@ import { Card, CardContent } from "@/components/ui/card";
 const heroWords = ["Tranquility", "&", "Restoration"];
 
 const features = [
-  { icon: MapPin, title: "Meru Highlands", desc: "Nestled along the serene Meru–Nanyuki Highway" },
-  { icon: Leaf, title: "Lush Natural Grounds", desc: "Acres of manicured gardens and olive groves" },
+  { icon: MapPin, title: "Meru Highlands", desc: "Off Meru–Maua Road, 3 km past Makutano" },
+  { icon: Leaf, title: "Lush Natural Grounds", desc: "Indigenous forest, lawns and a river running through" },
   { icon: Award, title: "KCPA Registered", desc: "Professional counselling certified since 2005" },
-  { icon: Calendar, title: "500+ Events Hosted", desc: "Weddings, retreats, trainings & celebrations" },
+  { icon: Calendar, title: "Events for 1,000", desc: "Weddings, retreats, trainings & celebrations" },
 ];
 
 const services = [
   {
     title: "Weddings & Celebrations",
-    description: "Breathtaking ceremonies surrounded by olive groves and mountain views. Our gardens offer the perfect country setting for your special day.",
+    description: "Say your vows in the Chapel Garden, then celebrate in the Main Arena — an open ground for up to 1,000 guests, framed by indigenous forest and mountain air.",
     image: weddingImage,
     icon: Calendar,
     link: "/services",
   },
   {
     title: "Olive Counselling & Training",
-    description: "Registered by KCPA since 2005, OCTC provides professional therapy and rehabilitation supported by medical doctors and social workers.",
+    description: "Registered by KCPA since 2005, OCTC provides one-on-one, couple and family therapy alongside professional trainings, working with a team of medical doctors and clinical psychologists.",
     image: retreatImage,
     icon: HeartHandshake,
     link: "/contact",
   },
   {
     title: "Corporate Retreats",
-    description: "Intimate spaces for workshops and spiritual renewal. Find tranquility that opens the mind in the heart of Meru.",
+    description: "Synergy Garden team-building, executive gatherings and workshops — 100-seat garden spaces that turn strategy sessions into memorable days out.",
     image: diningImage,
     icon: Users,
     link: "/services",
   },
 ];
 
-const galleryItems = [weddingImage, retreatImage, diningImage, weddingImage, retreatImage, diningImage];
+const galleryItems = [arenaImage, fountainImage, birdsImage, apiaryImage, gazeboImage, riverImage];
+
+const signatureSpaces = [
+  { name: "Main Arena", capacity: "Up to 1,000 guests", desc: "The largest open ground — wedding receptions, music video productions and large events.", image: arenaImage },
+  { name: "Garden of Eden", capacity: "Up to 100 guests", desc: "Home of the Miracle Tree; ideal for couples, retreats and family get-togethers.", image: weddingImage },
+  { name: "Mount Sinai", capacity: "Up to 50 guests", desc: "The highest point of the gardens — a quiet, private place dedicated to prayer.", image: prayerSignImage },
+  { name: "Chapel Garden", capacity: "12-seat chapel", desc: "A cosy chapel for weddings and services, beside the forest and River Ngaciuma.", image: pathImage },
+  { name: "Synergy Garden", capacity: "Up to 100 guests", desc: "Built for team building, with the apiary offering lessons in working together.", image: apiaryImage },
+  { name: "Fountain View", capacity: "Outdoor auditorium", desc: "A natural amphitheatre with a water fountain — a favourite for photos and videos.", image: fountainImage },
+];
 
 const processSteps = [
   {
@@ -66,34 +84,13 @@ const processSteps = [
     title: "Confirm & Celebrate",
     desc: "Complete your booking, and leave the rest to us. Arrive to a space prepared just for you.",
   },
-];
-
-const testimonials = [
-  {
-    quote: "The gardens' ambiance and tranquility greet you at the entrance. Our wedding felt like something from a dream — the olive trees, the mountains, the warmth of every staff member.",
-    author: "Sarah & James M.",
-    event: "Wedding Celebration",
-    stars: 5,
-  },
-  {
-    quote: "OCTC changed my life. The professional counselling team provided a safe, serene space for my healing journey. I left a different person.",
-    author: "David K.",
-    event: "Counselling Client",
-    stars: 5,
-  },
-  {
-    quote: "We held our leadership retreat here and the setting transformed every conversation. There's a rare stillness at Olive that opens the mind.",
-    author: "Dr. Wanjiku N.",
-    event: "Corporate Retreat",
-    stars: 5,
-  },
-];
+]; 
 
 const stats = [
-  { value: "2005", label: "Established" },
-  { value: "500+", label: "Events Hosted" },
-  { value: "10k+", label: "Lives Touched" },
-  { value: "100%", label: "Natural Serenity" },
+  { value: "2005", label: "OCTC Registered" },
+  { value: "1,000", label: "Main Arena Guests" },
+  { value: "100", label: "Garden Event Guests" },
+  { value: "12", label: "Seat Chapel" },
 ];
 
 const Index = () => {
@@ -272,7 +269,7 @@ const Index = () => {
             className="relative"
           >
             <div className="aspect-[4/5] rounded-3xl overflow-hidden shadow-2xl relative z-10">
-              <img src={retreatImage} alt="Olive Retreat Gardens" className="w-full h-full object-cover" />
+              <img src={pathImage} alt="Garden path winding through Olive Retreat Gardens" className="w-full h-full object-cover" />
               {/* Floating accent badges */}
               <div className="absolute bottom-6 left-6 z-20 bg-white/95 backdrop-blur rounded-xl px-4 py-3 shadow-lg flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-primary flex-shrink-0" />
@@ -380,6 +377,62 @@ const Index = () => {
                 </Card>
               </motion.div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ SIGNATURE SPACES ═══ */}
+      <section className="px-8 lg:px-16 py-24 lg:py-32 bg-background">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ duration: 0.7 }}
+            className="text-center mb-16"
+          >
+            <span className="text-primary font-bold tracking-widest uppercase text-xs mb-3 block">Named Spaces</span>
+            <h2 className="text-4xl md:text-5xl font-serif mb-5 text-foreground">Signature Spaces</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto text-base">
+              From the 1,000-guest Main Arena to the 12-seat chapel — every corner of the gardens has a purpose.
+            </p>
+          </motion.div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-7">
+            {signatureSpaces.map((space, i) => (
+              <motion.div
+                key={space.name}
+                initial={{ opacity: 0, y: 40 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.6, delay: (i % 3) * 0.12 }}
+                className="group relative rounded-3xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-500 aspect-[4/3]"
+              >
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/5 z-10" />
+                <img
+                  src={space.image}
+                  alt={space.name}
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  loading="lazy"
+                />
+                <div className="absolute inset-x-0 bottom-0 z-20 p-6">
+                  <span className="inline-block text-[10px] font-semibold tracking-widest uppercase bg-primary text-primary-foreground rounded-full px-3 py-1 mb-3">
+                    {space.capacity}
+                  </span>
+                  <h3 className="font-serif text-xl text-white mb-1.5">{space.name}</h3>
+                  <p className="text-xs text-white/75 leading-relaxed">{space.desc}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="text-center mt-12">
+            <Link
+              to="/services"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline underline-offset-4"
+            >
+              Explore all spaces & packages <ChevronRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </section>
@@ -504,67 +557,6 @@ const Index = () => {
         </div>
       </section>
 
-      {/* ═══ TESTIMONIALS ═══ */}
-      <section className="px-8 lg:px-16 py-24 lg:py-32 bg-background">
-        <div className="max-w-6xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.7 }}
-            className="text-center mb-16"
-          >
-            <div className="flex justify-center gap-1 mb-5">
-              {[...Array(5)].map((_, i) => (
-                <Star key={i} size={20} className="text-primary fill-primary" />
-              ))}
-            </div>
-            <h2 className="text-4xl md:text-5xl font-serif text-foreground">What People Say</h2>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-7">
-            {testimonials.map((t, i) => (
-              <motion.blockquote
-                key={i}
-                initial={{ opacity: 0, y: 32 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-60px" }}
-                transition={{ duration: 0.65, delay: i * 0.15 }}
-                className={`relative flex flex-col p-8 rounded-3xl border border-border shadow-sm ${
-                  i === 1 ? "bg-primary text-primary-foreground md:-translate-y-4 md:shadow-xl" : "bg-card"
-                }`}
-              >
-                {/* Stars */}
-                <div className="flex gap-1 mb-5">
-                  {[...Array(t.stars)].map((_, si) => (
-                    <Star
-                      key={si}
-                      size={14}
-                      className={i === 1 ? "text-white fill-white" : "text-primary fill-primary"}
-                    />
-                  ))}
-                </div>
-
-                <div className={`text-5xl font-serif leading-none mb-3 ${i === 1 ? "text-white/20" : "text-primary/15"}`}>"</div>
-
-                <p className={`font-serif text-base italic leading-relaxed flex-1 mb-7 ${
-                  i === 1 ? "text-primary-foreground/90" : "text-foreground/85"
-                }`}>
-                  {t.quote}
-                </p>
-
-                <footer className={`flex flex-col border-t pt-4 ${
-                  i === 1 ? "border-white/20" : "border-border"
-                }`}>
-                  <strong className={`text-sm font-semibold ${i === 1 ? "text-white" : "text-foreground"}`}>{t.author}</strong>
-                  <span className={`text-xs mt-0.5 font-medium ${i === 1 ? "text-primary-foreground/60" : "text-primary"}`}>{t.event}</span>
-                </footer>
-              </motion.blockquote>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ═══ CTA BAND ═══ */}
       <section className="relative py-32 overflow-hidden bg-foreground text-center">
         <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(circle_at_center,_white_1px,_transparent_1px)] bg-[size:28px_28px]" />
@@ -611,7 +603,7 @@ const Index = () => {
       </section>
 
       {/* ═══ FOOTER ═══ */}
-      <footer className="bg-card border-t border-border">
+      <footer className="hidden" aria-hidden="true">
         <div className="max-w-7xl mx-auto px-8 lg:px-16 pt-16 pb-8">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
             {/* Brand */}
@@ -648,15 +640,15 @@ const Index = () => {
               <div className="space-y-3 text-sm text-muted-foreground">
                 <div className="flex items-start gap-2.5">
                   <MapPin size={14} className="text-primary mt-0.5 flex-shrink-0" />
-                  <span>Along Meru–Nanyuki Highway, Meru, Kenya</span>
+                  <span>Off Meru–Maua Road, Meru, Kenya</span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <Phone size={14} className="text-primary flex-shrink-0" />
-                  <a href="tel:+254700000000" className="hover:text-primary transition-colors">+254 700 000 000</a>
+                  <a href={SITE_CONTACT.phoneHref} className="hover:text-primary transition-colors">{SITE_CONTACT.phoneDisplay}</a>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <Mail size={14} className="text-primary flex-shrink-0" />
-                  <a href="mailto:info@oliveretreat.co.ke" className="hover:text-primary transition-colors">info@oliveretreat.co.ke</a>
+                  <a href={`mailto:${SITE_CONTACT.email}`} className="hover:text-primary transition-colors">{SITE_CONTACT.email}</a>
                 </div>
               </div>
             </div>

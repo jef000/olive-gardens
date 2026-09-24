@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import heroImage from "@/assets/hero-garden.jpg";
-import weddingImage from "@/assets/gallery-wedding.jpg";
-import retreatImage from "@/assets/gallery-retreat.jpg";
-import diningImage from "@/assets/gallery-dining.jpg";
+import api from "@/lib/api";
+import heroImage from "@/assets/venue/hero-garden.jpg";
+import weddingImage from "@/assets/venue/venue-garden-of-eden.jpg";
+import diningImage from "@/assets/venue/venue-lounge.jpg";
+import arenaImage from "@/assets/venue/venue-main-arena.jpg";
+import chapelImage from "@/assets/venue/venue-chapel-garden.jpg";
+import prayerImage from "@/assets/venue/venue-prayer-sign.jpg";
+import apiaryImage from "@/assets/venue/venue-apiary.jpg";
+import octcBuildingImage from "@/assets/venue/octc-building.jpg";
 import { Check, ChevronRight, X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
@@ -21,8 +26,9 @@ interface ServiceItem {
   capacity: string;
   description: string;
   includes: string[];
-  price: string;
   image: string;
+  /** Space id passed to the booking flow (ids are unique per service). */
+  bookingSpaceId: string;
   subSpaces: SubSpace[];
 }
 
@@ -33,50 +39,50 @@ const packages = [
       {
         id: "main-arena",
         title: "Main Arena",
-        capacity: "Up to 500 guests",
-        description: "Our signature open-air canopied arena, set among olive trees with panoramic mountain views. Ideal for weddings, conferences, and large celebrations.",
-        includes: ["Setup & teardown", "Basic sound system", "Parking for 100 vehicles", "Security"],
-        price: "From KES 150,000",
-        image: weddingImage,
+        capacity: "Up to 1,000 guests",
+        description: "The largest open ground in the gardens — used for wedding receptions, music video productions and large events, with room for every kind of celebration.",
+        includes: ["Outdoor arena ground", "Wedding receptions", "Music video productions", "Large group events"],
+        image: arenaImage,
+        bookingSpaceId: "main-arena",
         subSpaces: [],
       },
       {
         id: "gardens",
         title: "Gardens",
         capacity: "Multiple outdoor spaces",
-        description: "Our gardens include curated spaces for prayer, picnics, intimate gatherings, and overnight outdoor experiences.",
+        description: "Named garden spaces for prayer, team building, picnics and overnight outdoor experiences — each with its own character.",
         includes: [
-          "Garden of Eden (Up to 150 guests)",
-          "Mount Sinai Prayer Area (Up to 80 guests)",
-          "Picnic Grounds (Up to 100 guests)",
-          "Camping Grounds (Up to 60 guests)",
+          "Garden of Eden (Up to 100 guests)",
+          "Mount Sinai Prayer Area (Up to 50 guests)",
+          "Chapel Garden (12-seat chapel)",
+          "Synergy Garden (Up to 100 guests)",
         ],
-        price: "",
-        image: retreatImage,
+        image: heroImage,
+        bookingSpaceId: "gardens",
         subSpaces: [
           {
             title: "Garden of Eden",
-            capacity: "Up to 150 guests",
-            description: "A lush tropical paradise with flowering paths, stone pathways, and a gentle water feature. Ideal for intimate weddings, photo shoots, and garden parties. The dappled light here is unforgettable.",
-            image: heroImage,
+            capacity: "Up to 100 guests",
+            description: "A lush garden with flowering paths and the famous Miracle Tree at its centre. Ideal for couples, family get-togethers, graduation parties and small retreats.",
+            image: weddingImage,
           },
           {
             title: "Mount Sinai Prayer Area",
-            capacity: "Up to 80 guests",
-            description: "A hilltop space designed for reflection, prayer, and spiritual gatherings. Stone seating circles overlook misty valleys and olive groves. Perfect for religious retreats and meditation groups.",
-            image: retreatImage,
+            capacity: "Up to 50 guests",
+            description: "Sitting on the highest part of the gardens, Mount Sinai is a peaceful, private space dedicated to prayer — for one person or up to fifty.",
+            image: prayerImage,
           },
           {
-            title: "Picnic Grounds",
+            title: "Chapel Garden",
+            capacity: "12-seat chapel",
+            description: "A small, cosy chapel by the indigenous forest and River Ngaciuma, where clergy solemnise and bless weddings and offer services of worship.",
+            image: chapelImage,
+          },
+          {
+            title: "Synergy Garden",
             capacity: "Up to 100 guests",
-            description: "Rolling lawns shaded by ancient olive trees, set up with blankets and baskets. Ideal for family reunions, school trips, birthday celebrations, and casual team outings.",
-            image: diningImage,
-          },
-          {
-            title: "Camping Grounds",
-            capacity: "Up to 60 guests",
-            description: "Safari-style tents and a campfire circle under the stars. Our camping grounds offer a unique overnight experience with highland air, stargazing, and morning birdsong.",
-            image: weddingImage,
+            description: "Built for corporate and institutional team building, with the apiary set within it — a living lesson in working together.",
+            image: apiaryImage,
           },
         ],
       },
@@ -86,38 +92,23 @@ const packages = [
     category: "Counselling & Training",
     items: [
       {
-        id: "therapy-room",
-        title: "Individual Counselling",
-        capacity: "1-on-1 sessions",
-        description: "Professional counselling with certified therapists in a private, serene setting. Confidential intake and secure record keeping.",
-        includes: ["50-minute sessions", "Private therapy room", "Intake assessment", "Follow-up notes"],
-        price: "KES 5,000 per session",
-        image: retreatImage,
+        id: "individual-counselling",
+        title: "Individual & Family Counselling",
+        capacity: "1-on-1, couples & family sessions",
+        description: "Professional therapy with certified counsellors and clinical psychologists in private, serene rooms. Confidential intake and secure record keeping.",
+        includes: ["One-on-one sessions", "Private therapy rooms", "Couples & family therapy", "Psychometric assessments"],
+        image: octcBuildingImage,
+        bookingSpaceId: "therapy-room",
         subSpaces: [],
       },
       {
-        id: "gardens",
-        title: "Group Workshops",
+        id: "group-workshops",
+        title: "Trainings & Workshops",
         capacity: "10–30 participants",
-        description: "Facilitated workshops on leadership, wellness, conflict resolution, and personal development. Multi-day retreats available.",
+        description: "Facilitated workshops and trainings for corporate clients, institutions, church groups, government agencies and NGOs — plus internships and supervision for counsellors in training.",
         includes: ["Facilitator", "Materials", "Tea breaks", "Certificate of attendance"],
-        price: "From KES 3,000 per person",
         image: diningImage,
-        subSpaces: [],
-      },
-    ],
-  },
-  {
-    category: "Catering",
-    items: [
-      {
-        id: "main-arena",
-        title: "Full Catering Package",
-        capacity: "50–500 guests",
-        description: "Farm-to-table dining with locally sourced ingredients. Menus customized to your event — from elegant plated dinners to buffet-style celebrations.",
-        includes: ["Menu consultation", "Service staff", "Table settings", "Cleanup"],
-        price: "From KES 2,500 per person",
-        image: diningImage,
+        bookingSpaceId: "gardens",
         subSpaces: [],
       },
     ],
@@ -127,6 +118,31 @@ const packages = [
 const Services = () => {
   const navigate = useNavigate();
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  const [prices, setPrices] = useState<Record<string, string>>({});
+
+  // Admin-managed price labels; falls back to "Rates on request" when absent
+  // or when the API is unreachable.
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .get<{ data?: { prices?: Array<{ service_id: string; price: string }> } }>("/pricing")
+      .then((response) => {
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const row of response.data?.data?.prices ?? []) {
+          next[row.service_id] = row.price;
+        }
+        setPrices(next);
+      })
+      .catch(() => {
+        /* Keep "Rates on request" fallback */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fadeIn = {
     hidden: { opacity: 0, y: 30 },
@@ -191,8 +207,16 @@ const Services = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: "-50px" }}
                   transition={{ duration: 0.8, delay: i * 0.1 }}
-                  className="group bg-white rounded-3xl overflow-hidden border border-border/50 shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col h-full cursor-pointer"
+                  className="group bg-white rounded-3xl overflow-hidden border border-border/50 shadow-sm hover:shadow-xl transition-all duration-500 flex flex-col h-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedService(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedService(item);
+                    }
+                  }}
                 >
                   <div className="aspect-[16/10] overflow-hidden relative">
                     <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors duration-500 z-10" />
@@ -231,6 +255,11 @@ const Services = () => {
                       <span className="text-sm font-medium text-primary flex items-center gap-1 group-hover:underline">
                         View Details <ChevronRight size={16} />
                       </span>
+                      {prices[item.id] ? (
+                        <span className="text-sm font-semibold text-foreground">{prices[item.id]}</span>
+                      ) : (
+                        <span className="text-sm font-medium text-muted-foreground">Rates on request</span>
+                      )}
                     </div>
                   </div>
                 </motion.div>
@@ -288,6 +317,7 @@ const Services = () => {
                 </div>
                 <button 
                   onClick={() => setSelectedService(null)}
+                  aria-label="Close service details"
                   className="absolute top-4 right-4 p-2 bg-black/20 hover:bg-black/40 backdrop-blur-sm text-white rounded-full transition-colors z-50"
                 >
                   <X size={20} />
@@ -343,7 +373,7 @@ const Services = () => {
                             <button
                               onClick={() => {
                                 setSelectedService(null);
-                                navigate(`/book?space=${selectedService.id}&notes=Interested in ${space.title}`);
+                                navigate(`/book?space=${selectedService.bookingSpaceId}&notes=Interested in ${space.title}`);
                               }}
                               className="text-sm font-medium text-foreground hover:text-primary transition-colors flex items-center gap-1"
                             >
@@ -356,11 +386,14 @@ const Services = () => {
                   </div>
                 )}
 
-                <div className="flex justify-end pt-6 border-t border-border/50">
+                <div className="flex items-center justify-between gap-4 pt-6 border-t border-border/50">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {prices[selectedService.id] || "Rates on request"}
+                  </span>
                   <button 
                     onClick={() => {
                       setSelectedService(null);
-                      navigate(`/book?space=${selectedService.id}`);
+                      navigate(`/book?space=${selectedService.bookingSpaceId}`);
                     }}
                     className="px-8 py-4 bg-black text-white rounded-full text-sm font-medium hover:bg-primary transition-colors duration-300 flex items-center gap-2"
                   >
