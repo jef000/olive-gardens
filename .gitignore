@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment files (keep examples)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Local tooling / agent configuration (not part of the product)
+.kiro/
+
+# OS files
+.DS_Store
+Thumbs.db

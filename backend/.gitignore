@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 yarn.lock
 
 # Build output
@@ -9,7 +8,6 @@ build/
 
 # Environment variables
 .env
-.env.example
 .env.local
 .env.*.local
 
@@ -34,3 +32,6 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+
+# Runtime uploads (regenerated locally by scripts/seed-gallery.js)
+uploads/

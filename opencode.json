@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "references": {
+    "ecc": {
+      "repository": "affaan-m/ECC",
+      "branch": "main",
+      "description": "ECC agent harness system: 68 agents, 292 skills, commands, rules, hooks, and memory for coding agents. Use for engineering process, TDD, security review, planning, build repair, and workflow guidance."
+    }
+  }
+}
