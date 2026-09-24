@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Menu, X, Leaf } from "lucide-react";
+import { SiteFooter } from "@/components/SiteFooter";
 
 const navItems = [
   { label: "Home", path: "/" },
@@ -23,13 +24,22 @@ export function SiteLayout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
+
   // On non-home pages always show solid navbar
   const solid = !isHome || scrolled;
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Top navbar */}
+      <a href="#main-content" className="sr-only fixed left-4 top-4 z-[60] rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground focus:not-sr-only">
+        Skip to content
+      </a>
+
       <header
+        aria-label="Primary navigation"
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
           solid
             ? "bg-background/95 backdrop-blur-md border-b border-border shadow-sm"
@@ -92,6 +102,8 @@ export function SiteLayout({ children }: { children: React.ReactNode }) {
               onClick={() => setMobileOpen(!mobileOpen)}
               className={`md:hidden p-2 transition-colors duration-300 ${solid ? "text-foreground" : "text-white"}`}
               aria-label="Toggle menu"
+              aria-expanded={mobileOpen}
+              aria-controls="mobile-navigation"
             >
               {mobileOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
@@ -100,7 +112,7 @@ export function SiteLayout({ children }: { children: React.ReactNode }) {
 
         {/* Mobile nav dropdown */}
         {mobileOpen && (
-          <div className="md:hidden border-t border-border bg-background/98 backdrop-blur-md px-6 py-4">
+          <div id="mobile-navigation" className="md:hidden border-t border-border bg-background/98 backdrop-blur-md px-6 py-4 shadow-lg">
             <nav className="flex flex-col gap-1">
               {navItems.map((item) => (
                 <Link
@@ -127,7 +139,8 @@ export function SiteLayout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* Main content — no top padding on home (hero is full-screen) */}
-      <main className={`flex-1 ${isHome ? "" : "pt-[73px]"}`}>{children}</main>
+      <main id="main-content" tabIndex={-1} className={`flex-1 outline-none ${isHome ? "" : "pt-[73px]"}`}>{children}</main>
+      <SiteFooter />
     </div>
   );
 }

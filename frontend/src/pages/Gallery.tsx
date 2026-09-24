@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "@/lib/api";
@@ -6,6 +6,7 @@ import api from "@/lib/api";
 interface GalleryImage {
   id: string;
   title: string;
+  alt_text?: string;
   description?: string;
   url: string;
   album: string;
@@ -22,7 +23,7 @@ interface GalleryResponse {
 const resolveImageUrl = (url: string) => {
   if (!url) return "";
   if (url.startsWith("http")) return url;
-  const apiBase = api.defaults.baseURL?.replace("/api", "") || "http://localhost:5000";
+  const apiBase = api.defaults.baseURL?.replace(/\/api$/, "") || "http://localhost:5000";
   return `${apiBase}${url}`;
 };
 
@@ -38,6 +39,8 @@ const Gallery = () => {
   const [activeAlbum, setActiveAlbum] = useState("all");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxVisible, setLightboxVisible] = useState(false);
+  const lightboxRef = useRef<HTMLDivElement>(null);
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +50,7 @@ const Gallery = () => {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await api.get<GalleryResponse>("/gallery");
+        const response = await api.get<GalleryResponse>("/gallery", { params: { limit: 100 } });
         const apiImages = response.data?.data?.images;
         setImages(Array.isArray(apiImages) ? apiImages : []);
       } catch (err: unknown) {
@@ -102,13 +105,17 @@ const Gallery = () => {
   };
 
   const openLightbox = (index: number) => {
+    lastFocusedRef.current = document.activeElement as HTMLElement | null;
     setLightboxIndex(index);
     requestAnimationFrame(() => setLightboxVisible(true));
   };
 
   const closeLightbox = () => {
     setLightboxVisible(false);
-    setTimeout(() => setLightboxIndex(null), 300);
+    setTimeout(() => {
+      setLightboxIndex(null);
+      lastFocusedRef.current?.focus();
+    }, 300);
   };
 
   const goNext = useCallback(() => {
@@ -123,10 +130,28 @@ const Gallery = () => {
 
   useEffect(() => {
     if (lightboxIndex === null || filtered.length === 0) return;
+    lightboxRef.current?.focus();
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeLightbox();
       if (e.key === "ArrowRight") goNext();
       if (e.key === "ArrowLeft") goPrev();
+      if (e.key === "Tab") {
+        const container = lightboxRef.current;
+        if (!container) return;
+        const focusables = Array.from(
+          container.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])')
+        );
+        const list = focusables.length ? focusables : [container];
+        const first = list[0];
+        const last = list[list.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKey);
@@ -179,6 +204,7 @@ const Gallery = () => {
             <button
               key={album.key}
               onClick={() => setActiveAlbum(album.key)}
+              aria-pressed={activeAlbum === album.key}
               className={`font-medium text-sm md:text-base tracking-wide px-6 py-3 rounded-full transition-all duration-300 ${
                 activeAlbum === album.key
                   ? "bg-black text-white shadow-lg scale-105"
@@ -230,7 +256,7 @@ const Gallery = () => {
                 </div>
                 <img
                   src={resolveImageUrl(photo.url)}
-                  alt={photo.title}
+                  alt={photo.alt_text || photo.title}
                   className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-[1.5s] ease-out"
                   loading="lazy"
                   onError={(e) => {
@@ -246,7 +272,12 @@ const Gallery = () => {
       {/* Lightbox */}
       {lightboxIndex !== null && filtered[lightboxIndex] && (
         <div
-          className={`fixed inset-0 z-50 flex items-center justify-center transition-all duration-300 ${
+          ref={lightboxRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${filtered[lightboxIndex].title} image viewer`}
+          tabIndex={-1}
+          className={`fixed inset-0 z-50 flex items-center justify-center outline-none transition-all duration-300 ${
             lightboxVisible ? "bg-foreground/90 backdrop-blur-sm" : "bg-foreground/0"
           }`}
           onClick={closeLightbox}
@@ -254,6 +285,7 @@ const Gallery = () => {
           {/* Close */}
           <button
             onClick={closeLightbox}
+            aria-label="Close image viewer"
             className="absolute top-6 right-6 text-background/70 hover:text-background transition-colors z-10"
           >
             <X className="h-7 w-7" />
@@ -262,6 +294,7 @@ const Gallery = () => {
           {/* Prev */}
           <button
             onClick={(e) => { e.stopPropagation(); goPrev(); }}
+            aria-label="Previous image"
             className="absolute left-4 md:left-8 text-background/60 hover:text-background transition-colors z-10"
           >
             <ChevronLeft className="h-10 w-10" />
@@ -270,7 +303,7 @@ const Gallery = () => {
           {/* Image */}
           <img
             src={resolveImageUrl(filtered[lightboxIndex].url)}
-            alt={filtered[lightboxIndex].title}
+            alt={filtered[lightboxIndex].alt_text || filtered[lightboxIndex].title}
             onClick={(e) => e.stopPropagation()}
             className={`max-h-[85vh] max-w-[90vw] object-contain rounded-sm shadow-2xl transition-all duration-300 ${
               lightboxVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
@@ -280,6 +313,7 @@ const Gallery = () => {
           {/* Next */}
           <button
             onClick={(e) => { e.stopPropagation(); goNext(); }}
+            aria-label="Next image"
             className="absolute right-4 md:right-8 text-background/60 hover:text-background transition-colors z-10"
           >
             <ChevronRight className="h-10 w-10" />

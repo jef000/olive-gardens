@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AvailabilityCalendar } from "@/components/AvailabilityCalendar";
 import { Check, ChevronRight, ArrowLeft, Loader2 } from "lucide-react";
 import api from "@/lib/api";
+import { SITE_CONTACT } from "@/lib/siteInfo";
 
 const spaces = [
   { id: "main-arena", name: "Main Arena", capacity: 500 },
@@ -187,16 +188,18 @@ const BookingPage = () => {
 
                 <div className="space-y-8">
                   {error && (
-                    <div className="p-4 bg-red-50 text-red-600 rounded-xl text-sm mb-6 border border-red-200">
+                    <div role="alert" className="p-4 bg-red-50 text-red-600 rounded-xl text-sm mb-6 border border-red-200">
                       {error}
                     </div>
                   )}
                   <div className="grid sm:grid-cols-2 gap-8">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Full Name</label>
+                      <label htmlFor="booking-name" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Full Name</label>
                       <input
+                        id="booking-name"
                         type="text"
                         required
+                        autoComplete="name"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                         className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
@@ -204,10 +207,12 @@ const BookingPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Email Address</label>
+                      <label htmlFor="booking-email" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Email Address</label>
                       <input
+                        id="booking-email"
                         type="email"
                         required
+                        autoComplete="email"
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
@@ -215,19 +220,22 @@ const BookingPage = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Phone Number</label>
+                      <label htmlFor="booking-phone" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Phone Number</label>
                       <input
+                        id="booking-phone"
                         type="tel"
                         required
+                        autoComplete="tel"
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                         className="w-full px-4 py-4 bg-muted/30 border border-border rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-300"
-                        placeholder="+254 700 000 000"
+                        placeholder={SITE_CONTACT.phoneDisplay}
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Expected Headcount</label>
+                      <label htmlFor="booking-headcount" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Expected Headcount</label>
                       <input
+                        id="booking-headcount"
                         type="number"
                         required
                         min="1"
@@ -241,8 +249,9 @@ const BookingPage = () => {
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Special Requests (Optional)</label>
+                    <label htmlFor="booking-notes" className="text-sm font-medium uppercase tracking-widest text-muted-foreground">Special Requests (Optional)</label>
                     <textarea
+                      id="booking-notes"
                       rows={4}
                       value={formData.notes}
                       onChange={(e) => setFormData({ ...formData, notes: e.target.value })}

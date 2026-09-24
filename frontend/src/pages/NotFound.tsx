@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import { motion } from "framer-motion";
+import { SITE_CONTACT } from "@/lib/siteInfo";
 
 const NotFound = () => {
   const location = useLocation();
@@ -51,7 +52,7 @@ const NotFound = () => {
             transition={{ delay: 0.5, duration: 0.8 }}
             className="mt-10 text-sm text-muted-foreground"
           >
-            <p>Need immediate help? Call us at +254 700 000 000 and we’ll walk you through your next steps.</p>
+            <p>Need immediate help? Call us at {SITE_CONTACT.phoneDisplay} and we’ll walk you through your next steps.</p>
           </motion.div>
         </div>
       </motion.section>

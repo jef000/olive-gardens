@@ -91,12 +91,21 @@
     @apply border-border;
   }
 
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+  }
+
   body {
     @apply bg-background text-foreground font-body antialiased;
+    min-width: 320px;
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading;
+  }
+
+  ::selection {
+    @apply bg-primary/25 text-foreground;
   }
 }
 
@@ -137,6 +146,18 @@
     @apply bg-card border border-border rounded-sm overflow-hidden 
            hover:shadow-lg transition-shadow duration-500;
   }
+
+  .eyebrow {
+    @apply text-primary font-semibold tracking-[0.22em] uppercase text-[0.68rem];
+  }
+
+  .page-shell {
+    @apply bg-background min-h-screen;
+  }
+
+  .surface-card {
+    @apply bg-card border border-border/70 rounded-2xl shadow-[0_12px_40px_rgb(42,51,43,0.06)];
+  }
 }
 
 /* Smooth scrolling */
@@ -157,4 +178,19 @@ html {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--olive-gold));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }
