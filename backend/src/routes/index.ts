@@ -7,6 +7,7 @@ import analyticsRoutes from './analytics.routes';
 import auditRoutes from './audit.routes';
 import notificationRoutes from './notification.routes';
 import inquiryRoutes from './inquiry.routes';
+import pricingRoutes from './pricing.routes';
 
 const router = Router();
 
@@ -23,6 +24,7 @@ router.use('/analytics', analyticsRoutes);
 router.use('/audit', auditRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/inquiries', inquiryRoutes);
+router.use('/pricing', pricingRoutes);
 
 // Health check endpoint
 router.get('/health', (_req, res) => {
