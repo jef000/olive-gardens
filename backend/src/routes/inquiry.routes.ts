@@ -6,6 +6,7 @@ import DOMPurify from 'dompurify';
 import { JSDOM } from 'jsdom';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { inquiryController } from '../controllers/inquiry.controller';
+import inquiryReplyController from '../controllers/inquiryReply.controller';
 
 const router = Router();
 const window = new JSDOM('').window;
@@ -54,15 +55,13 @@ router.post(
 
       // In a real app, we might want to trigger an email notification to admins here.
       const inquiryId = (result.rows[0] as any).id;
-      
+
       // Notify admins about the new inquiry
-      import('../services/notification.service').then(module => {
+      import('../services/notification.service').then((module) => {
         const notificationService = module.default;
-        notificationService.notifyInquiryEvent(
-          inquiryId,
-          `${first_name} ${last_name}`,
-          email
-        ).catch(err => console.error('Failed to send inquiry notification:', err));
+        notificationService
+          .notifyInquiryEvent(inquiryId, `${first_name} ${last_name}`, email)
+          .catch((err) => console.error('Failed to send inquiry notification:', err));
       });
 
       sendSuccess(res, { inquiryId }, 'Inquiry sent successfully', 201);
@@ -77,12 +76,7 @@ router.post(
  */
 
 // GET /api/inquiries
-router.get(
-  '/',
-  authenticate,
-  authorize('admin', 'moderator'),
-  inquiryController.getInquiries
-);
+router.get('/', authenticate, authorize('admin', 'moderator'), inquiryController.getInquiries);
 
 // GET /api/inquiries/:id
 router.get(
@@ -108,7 +102,7 @@ router.patch(
   authorize('admin', 'moderator'),
   [
     param('id').isUUID().withMessage('Invalid ID format'),
-    body('status').isIn(['new', 'read', 'replied', 'archived']).withMessage('Invalid status')
+    body('status').isIn(['new', 'read', 'replied', 'archived']).withMessage('Invalid status'),
   ],
   async (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req);
@@ -136,6 +130,97 @@ router.delete(
     next();
   },
   inquiryController.deleteInquiry
+);
+
+// GET /api/inquiries/:id/replies - List replies with delivery status
+router.get(
+  '/:id/replies',
+  authenticate,
+  authorize('admin', 'moderator'),
+  [param('id').isUUID().withMessage('Invalid ID format')],
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, 'Validation error', 400, errors.array() as any);
+      return;
+    }
+    next();
+  },
+  inquiryReplyController.listReplies
+);
+
+// POST /api/inquiries/:id/replies/preview - Render the reply email without sending
+router.post(
+  '/:id/replies/preview',
+  authenticate,
+  authorize('admin', 'moderator'),
+  [
+    param('id').isUUID().withMessage('Invalid ID format'),
+    body('body')
+      .isString()
+      .withMessage('Reply body must be text')
+      .trim()
+      .notEmpty()
+      .withMessage('Reply body is required')
+      .isLength({ max: 20000 })
+      .withMessage('Reply body is too long'),
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, 'Validation error', 400, errors.array() as any);
+      return;
+    }
+    next();
+  },
+  inquiryReplyController.previewReply
+);
+
+// POST /api/inquiries/:id/replies - Queue a reply to the inquiry's email
+router.post(
+  '/:id/replies',
+  authenticate,
+  authorize('admin', 'moderator'),
+  [
+    param('id').isUUID().withMessage('Invalid ID format'),
+    body('body')
+      .isString()
+      .withMessage('Reply body must be text')
+      .trim()
+      .notEmpty()
+      .withMessage('Reply body is required')
+      .isLength({ max: 20000 })
+      .withMessage('Reply body is too long'),
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, 'Validation error', 400, errors.array() as any);
+      return;
+    }
+    next();
+  },
+  inquiryReplyController.createReply
+);
+
+// POST /api/inquiries/:id/replies/:replyId/retry - Re-queue a failed reply
+router.post(
+  '/:id/replies/:replyId/retry',
+  authenticate,
+  authorize('admin', 'moderator'),
+  [
+    param('id').isUUID().withMessage('Invalid ID format'),
+    param('replyId').isUUID().withMessage('Invalid reply ID format'),
+  ],
+  async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      sendError(res, 'Validation error', 400, errors.array() as any);
+      return;
+    }
+    next();
+  },
+  inquiryReplyController.retryReply
 );
 
 export default router;

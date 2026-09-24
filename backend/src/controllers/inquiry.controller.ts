@@ -20,29 +20,59 @@ export class InquiryController {
    */
   async getInquiries(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10;
-      const status = req.query.status as string;
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 10));
       const offset = (page - 1) * limit;
+      const { status, search, start_date, end_date, year } = req.query as {
+        status?: string;
+        search?: string;
+        start_date?: string;
+        end_date?: string;
+        year?: string;
+      };
 
-      let countQuery = 'SELECT COUNT(*) FROM inquiries';
-      let dataQuery = 'SELECT * FROM inquiries';
-      const params: any[] = [];
-      const dataParams: any[] = [];
+      const conditions: string[] = [];
+      const values: string[] = [];
+      const add = (template: string, value: string) => {
+        values.push(value);
+        conditions.push(template.replace(/\$\?/g, `$${values.length}`));
+      };
 
-      if (status) {
-        countQuery += ' WHERE status = $1';
-        dataQuery += ' WHERE status = $1';
-        params.push(status);
-        dataParams.push(status);
+      if (status && status !== 'all') {
+        add('status = $?', status);
       }
 
-      dataQuery += ` ORDER BY created_at DESC LIMIT $${dataParams.length + 1} OFFSET $${dataParams.length + 2}`;
-      dataParams.push(limit, offset);
+      if (search) {
+        add(
+          '(first_name ILIKE $? OR last_name ILIKE $? OR email ILIKE $? OR phone ILIKE $? OR message ILIKE $?)',
+          `%${search}%`
+        );
+      }
 
-      const [countResult, dataResult] = await Promise.all([
-        query(countQuery, params),
-        query<Inquiry>(dataQuery, dataParams),
+      if (year && /^\d{4}$/.test(year)) {
+        add('created_at >= $?::date', `${year}-01-01`);
+        add("created_at < ($?::date + INTERVAL '1 year')", `${year}-01-01`);
+      }
+
+      if (start_date) {
+        add('created_at >= $?::date', start_date);
+      }
+
+      if (end_date) {
+        add("created_at < ($?::date + INTERVAL '1 day')", end_date);
+      }
+
+      const whereClause = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';
+
+      const countQuery = `SELECT COUNT(*) FROM inquiries${whereClause}`;
+      const dataQuery = `SELECT * FROM inquiries${whereClause} ORDER BY created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`;
+      const yearsQuery =
+        'SELECT DISTINCT EXTRACT(YEAR FROM created_at)::int AS year FROM inquiries ORDER BY year DESC';
+
+      const [countResult, dataResult, yearsResult] = await Promise.all([
+        query<{ count: string }>(countQuery, values),
+        query<Inquiry>(dataQuery, [...values, limit, offset]),
+        query<{ year: number }>(yearsQuery),
       ]);
 
       const total = parseInt(countResult.rows[0].count);
@@ -55,6 +85,7 @@ export class InquiryController {
           limit,
           totalPages: Math.ceil(total / limit),
         },
+        years: yearsResult.rows.map((row) => row.year),
       });
     } catch (error) {
       next(error);

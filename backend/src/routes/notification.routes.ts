@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import notificationController from '../controllers/notification.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
+import { validate } from '../middleware/validate';
+import {
+  broadcastNotificationSchema,
+  createNotificationSchema,
+} from '../validators/notification.validator';
 
 const router = Router();
 
@@ -17,11 +22,7 @@ router.get(
 );
 
 // GET /notifications/stats - Get notification statistics
-router.get(
-  '/stats',
-  authenticate,
-  notificationController.getStats.bind(notificationController)
-);
+router.get('/stats', authenticate, notificationController.getStats.bind(notificationController));
 
 // PATCH /notifications/read-all - Mark all as read
 router.patch(
@@ -35,6 +36,7 @@ router.post(
   '/broadcast',
   authenticate,
   authorize('admin'),
+  validate(broadcastNotificationSchema),
   notificationController.createBroadcast.bind(notificationController)
 );
 
@@ -61,17 +63,14 @@ router.delete(
 );
 
 // GET /notifications - Get all notifications
-router.get(
-  '/',
-  authenticate,
-  notificationController.getNotifications.bind(notificationController)
-);
+router.get('/', authenticate, notificationController.getNotifications.bind(notificationController));
 
 // POST /notifications - Create notification (Admin only)
 router.post(
   '/',
   authenticate,
   authorize('admin'),
+  validate(createNotificationSchema),
   notificationController.createNotification.bind(notificationController)
 );
 

@@ -53,6 +53,8 @@ export interface NotificationFilters {
   resource_type?: string;
   start_date?: string;
   end_date?: string;
+  page?: number;
+  limit?: number;
 }
 
 export interface NotificationStats {

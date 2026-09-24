@@ -580,4 +580,20 @@ All endpoints return errors in the following format:
 **Email:** admin@olivegarden.com  
 **Password:** Admin123!
 
+---
+
+## Security endpoints
+
+Authentication uses `httpOnly` cookies: `access_token` (15 minutes), `refresh_token` (7 days), and `session_id` (30 minutes). State-changing requests must include the `X-CSRF-Token` response value returned by an authenticated safe request.
+
+- `POST /api/auth/refresh` rotates the refresh cookie and returns a new CSRF token header.
+- `POST /api/auth/logout` revokes the current user's refresh tokens and session.
+- `POST /api/auth/mfa/setup` returns a QR code and one-time backup codes.
+- `POST /api/auth/mfa/verify` enables MFA after a valid TOTP code.
+- `POST /api/auth/mfa/validate` completes a login MFA challenge.
+- `POST /api/auth/mfa/backup-code` completes a login challenge with a one-time backup code.
+- `POST /api/auth/mfa/disable` disables MFA for the authenticated user.
+
+Requests exceeding the configured rate limits return `429` with `Retry-After`. Uploads accept only JPEG, PNG, and WebP files up to 5 MB and are validated against their magic numbers.
+
 ⚠️ **Important:** Change the default password in production!

@@ -20,11 +20,10 @@ export class NotificationController {
         user_id: userId,
       };
 
-      const notifications = await notificationService.getNotifications(filters);
+      const page = await notificationService.getNotifications(filters);
 
       sendSuccess(res, {
-        notifications,
-        total: notifications.length,
+        ...page,
       });
     } catch (error) {
       next(error);

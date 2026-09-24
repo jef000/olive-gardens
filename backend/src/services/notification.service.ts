@@ -1,10 +1,10 @@
 import { query } from '../db/pool';
-import { 
-  Notification, 
-  CreateNotificationDTO, 
+import {
+  Notification,
+  CreateNotificationDTO,
   NotificationFilters,
   NotificationType,
-  NotificationPriority 
+  NotificationPriority,
 } from '../types/notification';
 
 /**
@@ -50,7 +50,7 @@ export class NotificationService {
     );
 
     const notifications: Notification[] = [];
-    
+
     for (const user of users.rows) {
       const notification = await this.createNotification({
         ...data,
@@ -65,7 +65,13 @@ export class NotificationService {
   /**
    * Get notifications with filters
    */
-  async getNotifications(filters: NotificationFilters): Promise<Notification[]> {
+  async getNotifications(filters: NotificationFilters): Promise<{
+    notifications: Notification[];
+    total: number;
+    page: number;
+    limit: number;
+    has_more: boolean;
+  }> {
     let queryText = 'SELECT * FROM notifications WHERE 1=1';
     const queryParams: any[] = [];
     let paramCount = 1;
@@ -112,10 +118,25 @@ export class NotificationService {
       paramCount++;
     }
 
-    queryText += ' ORDER BY created_at DESC LIMIT 100';
+    const countResult = await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM notifications WHERE ${queryText.split(' WHERE ')[1]}`,
+      queryParams
+    );
+    const page = Math.max(1, Number(filters.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filters.limit) || 25));
+    const offset = (page - 1) * limit;
+    queryText += ` ORDER BY created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    queryParams.push(limit, offset);
 
     const result = await query<Notification>(queryText, queryParams);
-    return result.rows;
+    const total = Number(countResult.rows[0]?.count || 0);
+    return {
+      notifications: result.rows,
+      total,
+      page,
+      limit,
+      has_more: offset + result.rows.length < total,
+    };
   }
 
   /**
@@ -216,11 +237,11 @@ export class NotificationService {
     return {
       total: parseInt(totalResult.rows[0]?.count || '0'),
       unread: parseInt(unreadResult.rows[0]?.count || '0'),
-      by_type: byTypeResult.rows.map(row => ({
+      by_type: byTypeResult.rows.map((row) => ({
         type: row.type,
         count: parseInt(row.count),
       })),
-      by_priority: byPriorityResult.rows.map(row => ({
+      by_priority: byPriorityResult.rows.map((row) => ({
         priority: row.priority,
         count: parseInt(row.count),
       })),
