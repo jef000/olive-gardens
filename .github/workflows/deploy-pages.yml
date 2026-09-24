@@ -1,5 +1,6 @@
 name: Deploy frontend to GitHub Pages
 
+# Requires Settings → Pages → Build and deployment → Source: GitHub Actions.
 on:
   push:
     branches: [main]
