@@ -14,11 +14,13 @@ import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
 
+const routerBasename = import.meta.env.BASE_URL.replace(/\/+$/, "") || "/";
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
-      <BrowserRouter>
+      <BrowserRouter basename={routerBasename}>
         <SiteLayout>
           <Routes>
             <Route path="/" element={<Index />} />

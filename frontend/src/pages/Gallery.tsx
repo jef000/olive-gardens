@@ -2,6 +2,19 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import api from "@/lib/api";
+import lawnImage from "@/assets/venue/hero-garden.jpg";
+import arenaImage from "@/assets/venue/venue-main-arena.jpg";
+import pathImage from "@/assets/venue/venue-garden-path.jpg";
+import edenImage from "@/assets/venue/venue-garden-of-eden.jpg";
+import miracleImage from "@/assets/venue/venue-miracle-tree-sign.jpg";
+import prayerImage from "@/assets/venue/venue-prayer-sign.jpg";
+import fountainImage from "@/assets/venue/venue-fountain.jpg";
+import riverImage from "@/assets/venue/venue-river.jpg";
+import birdsImage from "@/assets/venue/venue-birds.jpg";
+import apiaryImage from "@/assets/venue/venue-apiary.jpg";
+import tortoiseImage from "@/assets/venue/venue-tortoise.jpg";
+import gazeboImage from "@/assets/venue/venue-gazebo.jpg";
+import octcImage from "@/assets/venue/octc-building.jpg";
 
 interface GalleryImage {
   id: string;
@@ -20,19 +33,35 @@ interface GalleryResponse {
   };
 }
 
+/**
+ * Bundled photos shown when the gallery API is unreachable or empty (for
+ * example on the static GitHub Pages deployment before the API is hosted).
+ */
+const FALLBACK_IMAGES: GalleryImage[] = [
+  { id: "local-lawn", title: "Manicured Lawns & Hedge Borders", alt_text: "Manicured lawns and trimmed hedge borders", description: "The sweeping lawns that greet guests at the gardens.", url: lawnImage, album: "Gardens" },
+  { id: "local-arena", title: "The Main Arena Grounds", alt_text: "Open lawn of the Main Arena", description: "The largest open ground, hosting up to 1,000 guests.", url: arenaImage, album: "Main Arena" },
+  { id: "local-path", title: "A Shaded Garden Path", alt_text: "Stone path winding through the gardens", description: "Stone pathways wind through flowering beds.", url: pathImage, album: "Gardens" },
+  { id: "local-eden", title: "The Garden of Eden", alt_text: "Planting inside the Garden of Eden", description: "Lush planting inside the Garden of Eden.", url: edenImage, album: "Garden of Eden" },
+  { id: "local-miracle", title: "The Miracle Tree", alt_text: "The Miracle Tree sign", description: "A wonder corner at the base of the main garden.", url: miracleImage, album: "Garden of Eden" },
+  { id: "local-prayer", title: "Mount Sinai Prayer Point", alt_text: "Scripture sign at a prayer point", description: "Prayer points on the highest part of the gardens.", url: prayerImage, album: "Mount Sinai Prayer Area" },
+  { id: "local-fountain", title: "Fountain View", alt_text: "Water fountain at Fountain View", description: "An outdoor auditorium for photos and events.", url: fountainImage, album: "Picnic Grounds" },
+  { id: "local-river", title: "River Ngaciuma", alt_text: "The river flowing through the gardens", description: "The natural river that flows through the gardens.", url: riverImage, album: "Picnic Grounds" },
+  { id: "local-birds", title: "Guineafowl on the Lawns", alt_text: "Guineafowl on the garden lawns", description: "Guineafowl roam freely across the gardens.", url: birdsImage, album: "Other" },
+  { id: "local-apiary", title: "The Apiary", alt_text: "Beehives in the Synergy Garden", description: "Beehives offer a living lesson in teamwork.", url: apiaryImage, album: "Other" },
+  { id: "local-tortoise", title: "The Tortoise Enclosure", alt_text: "Tortoise in its enclosure", description: "Slow and steady residents of the gardens.", url: tortoiseImage, album: "Other" },
+  { id: "local-gazebo", title: "The Garden Gazebo", alt_text: "Shaded gazebo on the lawns", description: "A favourite spot for small ceremonies.", url: gazeboImage, album: "Gardens" },
+  { id: "local-octc", title: "Olive Counselling & Training Center", alt_text: "The OCTC building", description: "Registered with KCPA since 2005 and housed within the gardens.", url: octcImage, album: "Facilities" },
+];
+
 const resolveImageUrl = (url: string) => {
   if (!url) return "";
   if (url.startsWith("http")) return url;
-  const apiBase = api.defaults.baseURL?.replace(/\/api$/, "") || "http://localhost:5000";
-  return `${apiBase}${url}`;
-};
-
-const getErrorMessage = (error: unknown) => {
-  if (typeof error === "object" && error !== null) {
-    const withResponse = error as { response?: { data?: { message?: string } } };
-    return withResponse.response?.data?.message;
+  // Bundled assets are already base-aware; API uploads need the API origin.
+  if (url.startsWith("/uploads/")) {
+    const apiBase = api.defaults.baseURL?.replace(/\/api$/, "") || "http://localhost:5000";
+    return `${apiBase}${url}`;
   }
-  return undefined;
+  return url;
 };
 
 const Gallery = () => {
@@ -52,10 +81,11 @@ const Gallery = () => {
       try {
         const response = await api.get<GalleryResponse>("/gallery", { params: { limit: 100 } });
         const apiImages = response.data?.data?.images;
-        setImages(Array.isArray(apiImages) ? apiImages : []);
-      } catch (err: unknown) {
-        setError(getErrorMessage(err) || "Failed to load gallery images.");
-        setImages([]);
+        const list = Array.isArray(apiImages) ? apiImages : [];
+        setImages(list.length > 0 ? list : FALLBACK_IMAGES);
+      } catch {
+        // Static hosting without the API: show the bundled photos instead.
+        setImages(FALLBACK_IMAGES);
       } finally {
         setIsLoading(false);
       }

@@ -28,6 +28,27 @@ If you deployed before this change: the repository no longer contains the former
 
 Migrations are tracked in the `migrations` table and are applied once, in numeric filename order. Take a database backup before applying migrations. To roll back, restore the backup or apply a reviewed down migration; this project intentionally does not delete production data automatically.
 
+## GitHub Pages (public site)
+
+The public `frontend` can be hosted for free on GitHub Pages; the API and admin
+portal cannot (Pages serves static files only — host `backend` separately).
+
+1. Enable Pages once: repository **Settings → Pages → Build and deployment →
+   Source: GitHub Actions** (the workflow also tries to enable it on first run).
+2. Push to `main` (or run the **Deploy frontend to GitHub Pages** workflow
+   manually). The site is published at `https://<owner>.github.io/<repo>/`.
+3. To connect the live API, set the repository variable `VITE_API_URL`
+   (**Settings → Secrets and variables → Actions → Variables**), e.g.
+   `https://api.example.com/api`, then re-run the workflow. Until it is set,
+   the gallery falls back to bundled photos and forms are inactive.
+4. Add the Pages origin (e.g. `https://<owner>.github.io`) to the backend
+   `ALLOWED_ORIGINS`.
+
+Build details: the workflow builds with `GITHUB_ACTIONS=true`, so
+`vite.config.ts` sets the base path to `/<repo>/`, `BrowserRouter` uses the
+same base, and `dist/index.html` is copied to `dist/404.html` so deep links
+survive a hard refresh. Local builds keep the root base (`/`).
+
 ## Security checklist
 
 - Use a unique JWT secret of at least 32 characters.
